@@ -9,24 +9,23 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/runner-mei/gowbem"
+	"GoWBEM/src/gowbem"
 )
 
 type SMIS struct {
-	host      string
-	port      string
-	insecure  bool
-	username  string
-	password  string
-	namespace string
-	client    *http.Client
+	host     string
+	port     string
+	insecure bool
+	username string
+	password string
+	client   *http.Client
+	conn     *gowbem.WBEMConnection
 }
 
 func New(host string, port string, insecure bool, username string, password string) (*SMIS, error) {
 	if host == "" || port == "" || username == "" || password == "" {
 		return nil, errors.New("Missing host (SMIS Host IP), port (SMIS Host Port), username, or password \n Check Environment Variables..")
 	}
-	namespace := "root/emc"
 
 	var client *http.Client
 	if insecure {
@@ -38,22 +37,34 @@ func New(host string, port string, insecure bool, username string, password stri
 		client = &http.Client{}
 	}
 
-	return &SMIS{host, port, insecure, username, password, namespace, client}, nil
+	return &SMIS{host, port, insecure, username, password, client, nil}, nil
 }
 
-func getArrayUrl(smis *SMIS) *url.URL {
+func getArrayUrl(smis *SMIS) string {
 	var schema string
 	if smis.insecure {
 		schema = "http"
 	} else {
 		schema = "https"
 	}
-	return &url.URL{
+	path := url.URL{
 		Scheme: schema,
 		User:   url.UserPassword(smis.username, smis.password),
 		Host:   smis.host + ":" + smis.port,
-		Path:   "/ecom/edaa",
+		Path:   "/root/emc",
 	}
+	return path.String()
+}
+
+func GetWBEMConn(smis *SMIS) (*gowbem.WBEMConnection, error) {
+	if smis.conn == nil {
+		c, e := gowbem.NewWBEMConn(getArrayUrl(smis))
+		if nil != e {
+			return nil, e
+		}
+		smis.conn = c
+	}
+	return smis.conn, nil
 }
 
 /////////////////////////////////////////////////
@@ -172,67 +183,97 @@ func (smis *SMIS) query(httpType, objectPath string, body, resp interface{}) err
 	}
 }
 
-func (smis *SMIS) EnumerateInstanceNames(classname string) ([]gowbem.CIMInstanceName, error) {
-	c, e := gowbem.NewClientCIMXML(getArrayUrl(smis), smis.insecure)
+func (smis *SMIS) EnumerateInstanceNames(classname string) ([]gowbem.InstanceName, error) {
+	c, e := GetWBEMConn(smis)
 	if nil != e {
 		return nil, e
 	}
-	return c.EnumerateInstanceNames(smis.namespace, classname)
+	return c.EnumerateInstanceNames(MakeClassName(classname))
 }
 
-func (smis *SMIS) EnumerateInstances(className string, deepInheritance bool, localOnly bool, includeQualifiers bool, includeClassOrigin bool, propertyList []string) ([]gowbem.CIMInstanceWithName, error) {
-	c, e := gowbem.NewClientCIMXML(getArrayUrl(smis), smis.insecure)
+func (smis *SMIS) EnumerateInstances(className string, deepInheritance bool, includeClassOrigin bool, propertyList []string) ([]gowbem.ValueNamedInstance, error) {
+	c, e := GetWBEMConn(smis)
 	if nil != e {
 		return nil, e
 	}
-	return c.EnumerateInstances(smis.namespace, className, deepInheritance, localOnly, includeQualifiers, includeClassOrigin, propertyList)
+	return c.EnumerateInstances(&gowbem.ClassName{Name: className}, deepInheritance, includeClassOrigin, propertyList)
 }
 
-func (smis *SMIS) GetInstanceByInstanceName(instanceName gowbem.CIMInstanceName, propertyList []string) (gowbem.CIMInstance, error) {
-	c, e := gowbem.NewClientCIMXML(getArrayUrl(smis), smis.insecure)
+func (smis *SMIS) GetInstance(instanceName *gowbem.InstanceName, includeClassOrigin bool, propertyList []string) (*gowbem.Instance, error) {
+	c, e := GetWBEMConn(smis)
 	if nil != e {
 		return nil, e
 	}
-	return c.GetInstanceByInstanceName(smis.namespace, instanceName, true, true, true, propertyList)
+	inst, err := c.GetInstance(instanceName, includeClassOrigin, propertyList)
+	if err != nil {
+		return nil, err
+	}
+	return &inst[0], err
 }
 
-func (smis *SMIS) AssociatorNames(instanceName gowbem.CIMInstanceName, assocClass, resultClass, role, resultRole string) ([]gowbem.CIMInstanceName, error) {
-	c, e := gowbem.NewClientCIMXML(getArrayUrl(smis), smis.insecure)
+func (smis *SMIS) AssociatorNames(instanceName *gowbem.InstanceName, assocClass, resultClass string, role, resultRole *string) ([]gowbem.ObjectPath, error) {
+	c, e := GetWBEMConn(smis)
 	if nil != e {
 		return nil, e
 	}
-	return c.AssociatorNames(smis.namespace, instanceName, assocClass, resultClass, role, resultRole)
+	return c.AssociatorNames(MakeObjectName(nil, instanceName), MakeClassName(assocClass), MakeClassName(resultClass), role, resultRole)
 }
 
-func (smis *SMIS) AssociatorInstances(instanceName gowbem.CIMInstanceName, assocClass, resultClass, role, resultRole string, includeClassOrigin bool, propertyList []string) ([]gowbem.CIMInstance, error) {
-	c, e := gowbem.NewClientCIMXML(getArrayUrl(smis), smis.insecure)
+func (smis *SMIS) AssociatorInstances(instanceName *gowbem.InstanceName, assocClass, resultClass string, role, resultRole *string, includeClassOrigin bool, propertyList []string) ([]gowbem.ValueObjectWithPath, error) {
+	c, e := GetWBEMConn(smis)
 	if nil != e {
 		return nil, e
 	}
-	return c.AssociatorInstances(smis.namespace, instanceName, assocClass, resultClass, role, resultRole, includeClassOrigin, propertyList)
+	return c.Associators(MakeObjectName(nil, instanceName), MakeClassName(assocClass), MakeClassName(resultClass), role, resultRole, includeClassOrigin, propertyList)
 }
 
-func (smis *SMIS) ReferenceNames(instanceName gowbem.CIMInstanceName, resultClass, role string) ([]gowbem.CIMInstanceName, error) {
-	c, e := gowbem.NewClientCIMXML(getArrayUrl(smis), smis.insecure)
+func (smis *SMIS) ReferenceNames(instanceName *gowbem.InstanceName, assocClass string, role *string) ([]gowbem.ObjectPath, error) {
+	c, e := GetWBEMConn(smis)
 	if nil != e {
 		return nil, e
 	}
-	return c.ReferenceNames(smis.namespace, instanceName, resultClass, role)
+	return c.ReferenceNames(MakeObjectName(nil, instanceName), MakeClassName(assocClass), role)
 }
 
-func (smis *SMIS) EnumerateClassNames(className string, deep bool) ([]string, error) {
-	c, e := gowbem.NewClientCIMXML(getArrayUrl(smis), smis.insecure)
+func (smis *SMIS) EnumerateClassNames(className string, deepInheritance bool) ([]gowbem.Class, error) {
+	c, e := GetWBEMConn(smis)
 	if nil != e {
 		return nil, e
 	}
-	return c.EnumerateClassNames(smis.namespace, className, deep)
+	return c.EnumerateClassNames(MakeClassName(className), deepInheritance)
 }
 
-func (smis *SMIS) GetKeyFromInstanceName(instanceName gowbem.CIMInstanceName, key string) (interface{}, error) {
-	for i := 0; i < instanceName.GetKeyBindings().Len(); i++ {
-		if instanceName.GetKeyBindings().Get(i).GetName() == key {
-			return instanceName.GetKeyBindings().Get(i).GetValue(), nil
+func (smis *SMIS) InvokeMethod(instanceName *gowbem.InstanceName, methodName string, paramValues []gowbem.IParamValue) (int, []gowbem.ParamValue, error) {
+	c, e := GetWBEMConn(smis)
+	if nil != e {
+		return -1, nil, e
+	}
+
+	return c.InvokeMethod(MakeObjectName(nil, instanceName), methodName, paramValues)
+}
+
+func (smis *SMIS) GetKeyFromInstanceName(instanceName *gowbem.InstanceName, keyName string) (interface{}, error) {
+	for _, key := range instanceName.KeyBinding {
+		if keyName == key.Name {
+			return key.KeyValue.KeyValue, nil
 		}
 	}
 	return "", errors.New("Key not found")
+}
+
+func (smis *SMIS) GetPropertyByName(instance *gowbem.Instance, name string) (interface{}, error) {
+	for _, pr := range instance.Property {
+		if pr.Name == name {
+			return pr.Value.Value, nil
+		}
+	}
+	return "", errors.New("Property not found")
+}
+
+func MakeClassName(name string) *gowbem.ClassName {
+	return &gowbem.ClassName{Name: name}
+}
+
+func MakeObjectName(classname *gowbem.ClassName, instanceName *gowbem.InstanceName) *gowbem.ObjectName {
+	return &gowbem.ObjectName{ClassName: classname, InstanceName: instanceName}
 }

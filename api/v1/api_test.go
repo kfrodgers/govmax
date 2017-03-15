@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/runner-mei/gowbem"
+	"GoWBEM/src/gowbem"
 )
 
 var smis *SMIS
 
 var testingSID string
-var testingInstance gowbem.CIMInstanceName
+var testingInstance *gowbem.InstanceName
 
 func init() {
 	host := MyGetenv("GOVMAX_SMISHOST", "10.108.247.22")
@@ -33,28 +33,14 @@ func init() {
 		panic(err)
 	}
 	for _, array := range arrays {
-		fmt.Println(array)
-		instance, e := smis.GetInstanceByInstanceName(array, nil)
+		instance, e := smis.GetInstance(&array, false, nil)
 		if nil != e {
 			continue
 		}
-		pr := instance.GetPropertyByName("ElementName")
-		testingSID = pr.GetValue().(string)
-		testingInstance = array
-		serviceName, _ := smis.GetStorageConfigurationService(testingInstance)
-		fmt.Println(serviceName)
-		serviceName, _ = smis.GetControllerConfigurationService(testingInstance)
-		fmt.Println(serviceName)
+		pr, _ := smis.GetPropertyByName(instance, "ElementName")
+		testingSID = pr.(string)
+		testingInstance = &array
 	}
-
-	names := DumpClassNames("")
-	for _, n := range names {
-		names2 := DumpClassNames(n)
-		for _, n2 := range names2 {
-			DumpClassNames(n2)
-		}
-	}
-	panic("x")
 }
 
 func MyGetenv(key string, defaultValue string) string {
@@ -65,21 +51,35 @@ func MyGetenv(key string, defaultValue string) string {
 	return v
 }
 
-func DumpInstanceName(name gowbem.CIMInstanceName) {
-	instance, err := smis.GetInstanceByInstanceName(name, nil)
+func DumpInstanceName(name *gowbem.InstanceName) {
+	instance, err := smis.GetInstance(name, true, nil)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	fmt.Println(name)
-	for i := 0; i < instance.GetPropertyCount(); i++ {
-		pr := instance.GetPropertyByIndex(i)
-		fmt.Println("\t", pr.GetName(), "=", pr.GetValue())
+	DumpInstanceClass(name)
+	DumpInstance(instance)
+}
+
+func DumpInstanceClass(name *gowbem.InstanceName) {
+	fmt.Print(name.ClassName, "={")
+	for i, key := range name.KeyBinding {
+		if i > 0 {
+			fmt.Print(",")
+		}
+		fmt.Print(key.Name, ":", key.KeyValue.KeyValue)
+	}
+	fmt.Println("}")
+}
+
+func DumpInstance(instance *gowbem.Instance) {
+	for _, pr := range instance.Property {
+		fmt.Println("\t", pr.Name, "=", pr.Value)
 	}
 }
 
-func DumpClassNames(class_name string) []string {
+func DumpClassNames(class_name string) []gowbem.Class {
 	names, err := smis.EnumerateClassNames(class_name, false)
 	if err != nil {
 		fmt.Println(err)
@@ -93,6 +93,28 @@ func DumpClassNames(class_name string) []string {
 	return names
 }
 
+func DumpParmValues(values []gowbem.ParamValue) {
+	for _, p := range values {
+		if p.Instance != nil {
+			DumpInstance(p.Instance)
+		} else if p.InstanceName != nil {
+			DumpInstanceName(p.InstanceName)
+		} else if p.Value != nil {
+			fmt.Println("Value = ", p.Value.Value)
+		} else if p.ValueReference != nil {
+			if p.ValueReference.InstanceName != nil {
+				DumpInstanceName(p.ValueReference.InstanceName)
+			} else if p.ValueReference.InstancePath != nil {
+				DumpInstanceName(p.ValueReference.InstancePath.InstanceName)
+			} else {
+				fmt.Println("ValueReference = ", p.ValueReference)
+			}
+		} else {
+			fmt.Println("p = ", p)
+		}
+	}
+}
+
 func TestGetStorageArrays(*testing.T) {
 
 	arrays, err := smis.GetStorageArrays()
@@ -104,20 +126,16 @@ func TestGetStorageArrays(*testing.T) {
 	testingSID = ""
 	fmt.Println(testingSID)
 	for _, array := range arrays {
-		fmt.Println(array)
-
-		instance, e := smis.GetInstanceByInstanceName(array, nil)
-		if nil != e {
-			continue
+		DumpInstanceName(&array)
+		swIdent, err2 := smis.GetSoftwareIdentity(&array)
+		if err2 != nil {
+			panic(err2)
 		}
-		pr := instance.GetPropertyByName("ElementName")
-		testingSID = pr.GetValue().(string)
-		testingInstance = array
+		DumpInstance(swIdent)
 	}
 }
 
 func TestGetStoragePools(*testing.T) {
-
 	pools, err := smis.GetStoragePools(testingInstance)
 	if err != nil {
 		panic(err)
@@ -126,14 +144,15 @@ func TestGetStoragePools(*testing.T) {
 		panic("empty list")
 	}
 	for _, entry := range pools {
-		fmt.Println(fmt.Sprintf("%+v", entry))
-
-		poolSettings, err := smis.GetStoragePoolSettings(entry)
+		if entry.InstancePath == nil {
+			panic("nil InstancePath")
+		}
+		poolSettings, err := smis.GetStoragePoolSettings(entry.InstancePath.InstanceName)
 		if err != nil {
 			panic(err)
 		}
 		for _, obj := range poolSettings {
-			fmt.Println("\t", fmt.Sprintf("%+v", obj))
+			DumpInstanceName(obj.InstancePath.InstanceName)
 		}
 	}
 }
@@ -148,7 +167,7 @@ func TestGetMaskingViews(*testing.T) {
 	}
 
 	for _, entry := range maskingViews {
-		devId, _ := smis.GetKeyFromInstanceName(entry, "DeviceID")
+		devId, _ := smis.GetKeyFromInstanceName(entry.InstancePath.InstanceName, "DeviceID")
 		fmt.Println(fmt.Sprintf("%+v", devId))
 	}
 }
@@ -164,7 +183,7 @@ func TestGetStorageGroups(*testing.T) {
 	}
 
 	for _, entry := range groups {
-		fmt.Println(fmt.Sprintf("%+v", entry))
+		DumpInstanceClass(entry.InstancePath.InstanceName)
 	}
 }
 
@@ -181,7 +200,7 @@ func TestGetVolumes(*testing.T) {
 	}
 
 	for _, entry := range vols {
-		fmt.Println(fmt.Sprintf("%+v", entry))
+		DumpInstanceClass(entry.InstancePath.InstanceName)
 	}
 }
 
@@ -196,7 +215,7 @@ func TestPortGroups(*testing.T) {
 	}
 
 	for _, entry := range portGroups {
-		fmt.Println(fmt.Sprintf("%+v", entry))
+		DumpInstanceClass(entry.InstancePath.InstanceName)
 	}
 }
 
@@ -211,7 +230,7 @@ func TestInitiatorGroups(*testing.T) {
 	}
 
 	for _, entry := range initGroups {
-		fmt.Println(fmt.Sprintf("%+v", entry))
+		DumpInstanceClass(entry.InstancePath.InstanceName)
 	}
 }
 
@@ -224,7 +243,7 @@ func TestGetVolumeByID(*testing.T) {
 		panic(err)
 	}
 	idx := len(vols) / 2
-	volumeId, err = smis.GetKeyFromInstanceName(vols[idx], "DeviceID")
+	volumeId, err = smis.GetKeyFromInstanceName(vols[idx].InstancePath.InstanceName, "DeviceID")
 	if err != nil {
 		panic(err)
 	}
@@ -235,30 +254,31 @@ func TestGetVolumeByID(*testing.T) {
 		panic(err)
 	}
 
-	fmt.Println(fmt.Sprintf("%+v", *vol))
+	DumpInstanceClass(vol)
 }
 
 func TestGetVolumeByName(*testing.T) {
 
-	var volumeInstance gowbem.CIMInstance
+	var volumeInstance *gowbem.Instance
 
 	vols, err := smis.GetVolumes(testingInstance)
 	if err != nil {
 		panic(err)
 	}
-	volumeInstance, err = smis.GetInstanceByInstanceName(vols[0], nil)
+	volumeInstance, err = smis.GetInstance(vols[0].InstancePath.InstanceName, false, nil)
 	if err != nil {
 		panic(err)
 	}
-	nameProp := volumeInstance.GetPropertyByName("ElementName")
-	fmt.Println("Looking for volume = ", nameProp.GetValue().(string))
+	nameProp, _ := smis.GetPropertyByName(volumeInstance, "ElementName")
+	fmt.Println("Looking for volume = ", nameProp.(string))
 
-	vol, err := smis.GetVolumeByName(testingInstance, nameProp.GetValue().(string))
+	foundVols, err := smis.GetVolumeByName(testingInstance, nameProp.(string))
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println(fmt.Sprintf("%+v", *vol))
+	for _, v := range foundVols {
+		DumpInstanceName(v)
+	}
 }
 
 func TestGetSLOs(*testing.T) {
@@ -274,71 +294,25 @@ func TestGetSLOs(*testing.T) {
 	}
 }
 
-func TestPostPortLogins(*testing.T) {
-
-	endpoints, err := smis.GetTargetEndpoints(testingInstance)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, entry := range endpoints {
-		DumpInstanceName(entry)
-	}
-	panic("done")
-
-	PostPortLoginsReq := &PostPortLoggedInReq{
-		PostPortLoggedInRequestContent: &PostPortLoggedInReqContent{
-			PostPortLoggedInRequestHardwareID: &PostPortLoggedInReqHardwareID{
-				AtType:     "http://schemas.emc.com/ecom/edaa/root/emc/SE_StorageHardwareID",
-				InstanceID: "10000000C94E5D22",
-			},
-			AtType: "http://schemas.emc.com/ecom/edaa/root/emc/Symm_StorageHardwareIDManagementService",
-		},
-	}
-
-	portValues, err := smis.PostPortLogins(PostPortLoginsReq, testingSID)
-	if err != nil {
-		panic(err)
-	}
-
-	for i := 0; i < len(portValues); i++ {
-		fmt.Println("Port Number:" + portValues[i].PortNumber + " Director:" + portValues[i].Director + " WWN:" + portValues[i].WWN)
-	}
-}
-
 func TestPostVolumes(*testing.T) {
 
 	PostVolRequest := &PostVolumesReq{
-		PostVolumesRequestContent: &PostVolumesReqContent{
-			AtType:             "http://schemas.emc.com/ecom/edaa/root/emc/Symm_StorageConfigurationService",
-			ElementName:        "test_vol",
-			ElementType:        "2",
-			EMCNumberOfDevices: "1",
-			Size:               "123",
-		},
+		ElementName:        "govmax_test_vol",
+		ElementType:        "2",
+		EMCNumberOfDevices: "1",
+		Size:               "123",
 	}
-	queuedJob, _, err := smis.PostVolumes(PostVolRequest, testingSID)
+
+	pools, _ := smis.GetStoragePools(testingInstance)
+	PostVolRequest.InPool = pools[0].InstancePath.InstanceName
+
+	volumes, err := smis.PostVolumes(PostVolRequest, testingInstance)
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println(fmt.Sprintf("%+v", queuedJob))
-}
-
-func TestPostCreateGroup(*testing.T) {
-	curTime := time.Now()
-	PostGroupRequest := &PostGroupReq{
-		PostGroupRequestContent: &PostGroupReqContent{
-			AtType:    "http://schemas.emc.com/ecom/edaa/root/emc/Symm_ControllerConfigurationService",
-			GroupName: "TestingSG_" + curTime.Format("Jan-2-2006--15-04-05"),
-			Type:      "4",
-		},
+	for _, p := range volumes {
+		DumpInstanceName(p.InstancePath.InstanceName)
 	}
-	storageGroup, err := smis.PostCreateGroup(PostGroupRequest, testingSID)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(fmt.Sprintf("%+v", storageGroup))
 }
 
 func TestGetStoragePoolSettings(*testing.T) {
@@ -346,12 +320,35 @@ func TestGetStoragePoolSettings(*testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	if len(storagePools) == 0 {
+		panic("No pools found")
+	}
 
-	storagePoolSettings, err := smis.GetStoragePoolSettings(storagePools[0])
+	storagePoolSettings, err := smis.GetStoragePoolSettings(storagePools[0].InstancePath.InstanceName)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(fmt.Sprintf("%+v", storagePoolSettings))
+	for _, sp := range storagePoolSettings {
+		DumpInstanceName(sp.InstancePath.InstanceName)
+	}
+}
+
+func TestPostCreateGroup(*testing.T) {
+	curTime := time.Now()
+	groupName := "govmax_sg_" + strconv.FormatInt(curTime.Unix(), 16)
+	fmt.Println("group = ", groupName)
+
+	storageGroup, err := smis.PostCreateGroup(testingInstance, groupName, 4)
+	if err != nil {
+		panic(err)
+	}
+	DumpInstanceName(storageGroup.InstanceName)
+
+	err = smis.PostDeleteGroup(testingInstance, storageGroup, false)
+	if err != nil {
+		panic(err)
+	}
+	panic("done")
 }
 
 func TestPostVolumeToSG(*testing.T) {
@@ -592,21 +589,10 @@ func TestRemoveInitiatorFromHG(*testing.T) {
 }
 
 func TestPostDeleteGroup(*testing.T) {
-	DeleteGroupRequest := &DeleteGroupReq{
-		DeleteGroupRequestContent: &DeleteGroupReqContent{
-			AtType: "http://schemas.emc.com/ecom/edaa/root/emc/Symm_ControllerConfigurationService",
-			DeleteGroupRequestContentMaskingGroup: &DeleteGroupReqContentMaskingGroup{
-				//Change AtType to type of Group and InstanceID to existing name of Group
-				AtType:     "http://schemas.emc.com/ecom/edaa/root/emc/SE_DeviceMaskingGroup",
-				InstanceID: "SYMMETRIX-+-" + testingSID + "-+-Test_SG",
-			},
-		},
-	}
-	deleteGroup, err := smis.PostDeleteGroup(DeleteGroupRequest, testingSID)
+	err := smis.PostDeleteGroup(testingInstance, nil, false)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(fmt.Sprintf("%+v", deleteGroup))
 }
 
 func TestPostDeleteVol(*testing.T) {
@@ -648,4 +634,35 @@ func TestPostDeleteMV(*testing.T) {
 		panic(err)
 	}
 	fmt.Println(fmt.Sprintf("%+v", deleteMV))
+}
+
+func TestPostPortLogins(*testing.T) {
+
+	endpoints, err := smis.GetTargetEndpoints(testingInstance)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, entry := range endpoints {
+		fmt.Println(entry)
+	}
+
+	PostPortLoginsReq := &PostPortLoggedInReq{
+		PostPortLoggedInRequestContent: &PostPortLoggedInReqContent{
+			PostPortLoggedInRequestHardwareID: &PostPortLoggedInReqHardwareID{
+				AtType:     "http://schemas.emc.com/ecom/edaa/root/emc/SE_StorageHardwareID",
+				InstanceID: "10000000C94E5D22",
+			},
+			AtType: "http://schemas.emc.com/ecom/edaa/root/emc/Symm_StorageHardwareIDManagementService",
+		},
+	}
+
+	portValues, err := smis.PostPortLogins(PostPortLoginsReq, testingSID)
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < len(portValues); i++ {
+		fmt.Println("Port Number:" + portValues[i].PortNumber + " Director:" + portValues[i].Director + " WWN:" + portValues[i].WWN)
+	}
 }
