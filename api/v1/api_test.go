@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"GoWBEM/src/gowbem"
+	"github.com/kfrodgers/GoWBEM/src/gowbem"
 )
 
 var smis *SMIS
@@ -37,7 +37,7 @@ func init() {
 		if nil != e {
 			continue
 		}
-		pr, _ := smis.GetPropertyByName(instance, "ElementName")
+		pr, _ := GetPropertyByName(instance, "ElementName")
 		testingSID = pr.(string)
 		testingInstance = &array
 	}
@@ -167,7 +167,7 @@ func TestGetMaskingViews(*testing.T) {
 	}
 
 	for _, entry := range maskingViews {
-		devId, _ := smis.GetKeyFromInstanceName(entry.InstancePath.InstanceName, "DeviceID")
+		devId, _ := GetKeyFromInstanceName(entry.InstancePath.InstanceName, "DeviceID")
 		fmt.Println(fmt.Sprintf("%+v", devId))
 	}
 }
@@ -245,7 +245,7 @@ func TestGetInitiators(*testing.T) {
 	}
 
 	for _, entry := range initiators {
-		key, _ := smis.GetKeyFromInstanceName(entry.InstancePath.InstanceName, "InstanceID")
+		key, _ := GetKeyFromInstanceName(entry.InstancePath.InstanceName, "InstanceID")
 		fmt.Println("initiator=", key.(string))
 	}
 }
@@ -259,7 +259,7 @@ func TestGetVolumeByID(*testing.T) {
 		panic(err)
 	}
 	idx := len(vols) / 2
-	volumeId, err = smis.GetKeyFromInstanceName(vols[idx].InstancePath.InstanceName, "DeviceID")
+	volumeId, err = GetKeyFromInstanceName(vols[idx].InstancePath.InstanceName, "DeviceID")
 	if err != nil {
 		panic(err)
 	}
@@ -285,7 +285,7 @@ func TestGetVolumeByName(*testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	nameProp, _ := smis.GetPropertyByName(volumeInstance, "ElementName")
+	nameProp, _ := GetPropertyByName(volumeInstance, "ElementName")
 	fmt.Println("Looking for volume = ", nameProp.(string))
 
 	foundVols, err := smis.GetVolumeByName(testingInstance, nameProp.(string))
@@ -424,6 +424,15 @@ func TestPostStorageHardwareID(*testing.T) {
 	}
 }
 
+func TestGetBaremetalHBA(*testing.T) {
+
+	HBAs, err := GetBaremetalHBA()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%+v", HBAs)
+}
+
 func TestPostPortLogins(*testing.T) {
 
 	endpoints, err := smis.GetScsiInitiators(testingInstance)
@@ -440,11 +449,11 @@ func TestPostPortLogins(*testing.T) {
 			fmt.Println("Port Number:" + portValues[i].PortNumber + " Director:" + portValues[i].Director + " WWN:" + portValues[i].WWN)
 		}
 	}
-	panic("done")
 }
 
 func TestPostCreateMaskingView(*testing.T) {
 
+	panic("not ported")
 	PostCreateMaskingViewReq := &PostCreateMaskingViewReq{
 		PostCreateMaskingViewRequestContent: &PostCreateMaskingViewReqContent{
 			AtType:      "http://schemas.emc.com/ecom/edaa/root/emc/Symm_ControllerconfigurationService",
@@ -473,17 +482,8 @@ func TestPostCreateMaskingView(*testing.T) {
 	fmt.Println(fmt.Sprintf("%+v", storageGroup))
 }
 
-func TestGetBaremetalHBA(*testing.T) {
-
-	HBAs, err := GetBaremetalHBA()
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("%+v", HBAs)
-}
-
 func TestPostDeleteMV(*testing.T) {
+	panic("not ported")
 	DeleteMVRequest := &DeleteMaskingViewReq{
 		DeleteMaskingViewRequestContent: &DeleteMaskingViewReqContent{
 			AtType: "http://schemas.emc.com/ecom/edaa/root/emc/Symm_ControllerConfigurationService",

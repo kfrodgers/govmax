@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"GoWBEM/src/gowbem"
+	"github.com/kfrodgers/GoWBEM/src/gowbem"
 )
 
 ///////////////////////////////////////////////////////////////
@@ -25,7 +25,7 @@ func (smis *SMIS) GetStorageInstanceName(sid string) (*gowbem.InstanceName, erro
 		return nil, err
 	}
 	for _, array := range arrays {
-		name, err := smis.GetKeyFromInstanceName(&array, "Name")
+		name, err := GetKeyFromInstanceName(&array, "Name")
 		if err != nil {
 			continue
 		}
@@ -42,9 +42,9 @@ func (smis *SMIS) GetStorageConfigurationService(systemInstanceName *gowbem.Inst
 		return nil, err
 	}
 
-	sysName, _ := smis.GetKeyFromInstanceName(systemInstanceName, "Name")
+	sysName, _ := GetKeyFromInstanceName(systemInstanceName, "Name")
 	for _, service := range configServices {
-		name, _ := smis.GetKeyFromInstanceName(&service, "SystemName")
+		name, _ := GetKeyFromInstanceName(&service, "SystemName")
 		if name.(string) == sysName.(string) {
 			return &service, nil
 
@@ -59,9 +59,9 @@ func (smis *SMIS) GetControllerConfigurationService(systemInstanceName *gowbem.I
 		return nil, err
 	}
 
-	sysName, _ := smis.GetKeyFromInstanceName(systemInstanceName, "Name")
+	sysName, _ := GetKeyFromInstanceName(systemInstanceName, "Name")
 	for _, service := range controllerServices {
-		name, _ := smis.GetKeyFromInstanceName(&service, "SystemName")
+		name, _ := GetKeyFromInstanceName(&service, "SystemName")
 		if name.(string) == sysName.(string) {
 			return &service, nil
 		}
@@ -75,9 +75,9 @@ func (smis *SMIS) GetStorageHardwareIDManagementService(systemInstanceName *gowb
 		return nil, err
 	}
 
-	sysName, _ := smis.GetKeyFromInstanceName(systemInstanceName, "Name")
+	sysName, _ := GetKeyFromInstanceName(systemInstanceName, "Name")
 	for _, service := range managementServices {
-		name, _ := smis.GetKeyFromInstanceName(&service, "SystemName")
+		name, _ := GetKeyFromInstanceName(&service, "SystemName")
 		if name.(string) == sysName.(string) {
 			return &service, nil
 		}
@@ -91,9 +91,9 @@ func (smis *SMIS) GetSoftwareIdentity(systemInstanceName *gowbem.InstanceName) (
 		return nil, err
 	}
 
-	sysName, _ := smis.GetKeyFromInstanceName(systemInstanceName, "Name")
+	sysName, _ := GetKeyFromInstanceName(systemInstanceName, "Name")
 	for _, swIdent := range softwareIdents {
-		name, _ := smis.GetKeyFromInstanceName(&swIdent, "InstanceID")
+		name, _ := GetKeyFromInstanceName(&swIdent, "InstanceID")
 		if name.(string) == sysName.(string) {
 			return smis.GetInstance(&swIdent, false, nil)
 		}
@@ -107,7 +107,7 @@ func (smis *SMIS) IsArrayV3(systemInstanceName *gowbem.InstanceName) bool {
 		return false
 	}
 	var major int
-	ucode, e := smis.GetPropertyByName(swIdent, "EMCEnginuityFamily")
+	ucode, e := GetPropertyByName(swIdent, "EMCEnginuityFamily")
 	if e != nil {
 		major = 0
 	} else {
@@ -190,7 +190,7 @@ func (smis *SMIS) GetVolumeByID(systemInstance *gowbem.InstanceName, volumeID st
 		return nil, err
 	}
 	for _, volume := range volumes {
-		name, err := smis.GetKeyFromInstanceName(volume.InstancePath.InstanceName, "DeviceID")
+		name, err := GetKeyFromInstanceName(volume.InstancePath.InstanceName, "DeviceID")
 		if err == nil {
 			if name.(string) == volumeID {
 				return volume.InstancePath.InstanceName, nil
@@ -243,7 +243,7 @@ func (smis *SMIS) GetTargetEndpoints(systemInstance *gowbem.InstanceName) ([]gow
 		if err != nil {
 			return nil, err
 		}
-		elementType, err := smis.GetPropertyByName(adapter, "EMCBSPElementType")
+		elementType, err := GetPropertyByName(adapter, "EMCBSPElementType")
 		if elementType.(string) != "3" {
 			continue
 		}
@@ -274,7 +274,7 @@ func (smis *SMIS) GetVolumeByName(systemInstance *gowbem.InstanceName, volumeNam
 		var volumeInstance *gowbem.Instance
 		volumeInstance, err = smis.GetInstance(volume.InstancePath.InstanceName, false, nil)
 		if err == nil {
-			nameProp, _ := smis.GetPropertyByName(volumeInstance, "ElementName")
+			nameProp, _ := GetPropertyByName(volumeInstance, "ElementName")
 			if nameProp == volumeName {
 				foundVolumes = append(foundVolumes, volume.InstancePath.InstanceName)
 				break
@@ -325,7 +325,7 @@ func (smis *SMIS) GetJobStatus(jobPath *gowbem.InstancePath) (*gowbem.Instance, 
 	var jobState int
 	var jobStatus string
 	var ok bool
-	value, _ := smis.GetPropertyByName(resp, "JobState")
+	value, _ := GetPropertyByName(resp, "JobState")
 	jobState, _ = strconv.Atoi(value.(string))
 	if jobStatus, ok = jobStatusMap[jobState]; !ok {
 		jobStatus = "UNKNOWN"
@@ -377,42 +377,6 @@ type PostVolumesReq struct {
 	Size               string               `json:"Size"`
 }
 
-////////////////////////////////////////////////////////////
-//            RESPONSE Struct used for                    //
-//          volume creation on the VMAX3.                 //
-////////////////////////////////////////////////////////////
-
-type PostVolumesResp struct {
-	Entries []struct {
-		Content struct {
-			AtType       string `json:"@type"`
-			I_Parameters struct {
-				I_Job struct {
-					AtType        string `json:"@type"`
-					E0_InstanceID string `json:"e0$InstanceID"`
-					Xmlns_e0      string `json:"xmlns$e0"`
-				} `json:"i$Job"`
-				I_Size int `json:"i$Size"`
-			} `json:"i$parameters"`
-			I_ReturnValue int    `json:"i$returnValue"`
-			Xmlns_i       string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
-}
-
 ///////////////////////////////////////////////////////////
 //              CREATE a Storage Volume                  //
 //     and check for Volume Creation Completion          //
@@ -444,67 +408,11 @@ func (smis *SMIS) PostVolumes(req *PostVolumesReq, systemInstance *gowbem.Instan
 	return smis.WaitForJob(retValues[idx].ValueReference.InstancePath, "CIM_StorageVolume")
 }
 
-//////////////////////////////////////
-//   REQUEST Structs used for any   //
-//   group creation on the VMAX3.   //
-//                                  //
-//    Storage Group (SG) - Type 4   //
-//     Port Group (PG) - Type 3     //
-//   Initiator Group (IG) - Type 2  //
-//////////////////////////////////////
-
-type PostGroupReq struct {
-	PostGroupRequestContent *PostGroupReqContent `json:"content"`
-}
-
-type PostGroupReqContent struct {
-	AtType    string `json:"@type"`
-	GroupName string `json:"GroupName"`
-	Type      string `json:"Type"`
-}
-
-////////////////////////////////////////////////////////////
-//           RESPONSE Struct  used for any                //
-//           group creation on the VMAX3.                 //
-//                                                        //
-//   Storage Group (SG) - Type SE_DeviceMaskingGroup      //
-//      Port Group (PG) - Type SE_TargetMaskingGroup      //
-//  Initiator Group (IG) - Type SE_InitiatorMaskingGroup  //
-////////////////////////////////////////////////////////////
-
-type PostGroupResp struct {
-	Entries []struct {
-		Content struct {
-			_type        string `json:"@type"`
-			I_parameters struct {
-				I_MaskingGroup struct {
-					_type         string `json:"@type"`
-					E0_InstanceID string `json:"e0$InstanceID"`
-					Xmlns_e0      string `json:"xmlns$e0"`
-				} `json:"i$MaskingGroup"`
-			} `json:"i$parameters"`
-			I_returnValue int    `json:"i$returnValue"`
-			Xmlns_i       string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
-}
-
 ///////////////////////////////////////////////////////////////
 //                  CREATE an Array Group                    //
-// Type Depends on Type field specified in requesting struct //
+//             groupType == 4 for storage Group              //
+//             groupType == 3 for port Group                 //
+//             groupType == 2 for initiator Group            //
 ///////////////////////////////////////////////////////////////
 
 func (smis *SMIS) PostCreateGroup(systemInstance *gowbem.InstanceName, groupName string, groupType int) (*gowbem.InstancePath, error) {
@@ -527,93 +435,18 @@ func (smis *SMIS) PostCreateGroup(systemInstance *gowbem.InstanceName, groupName
 	return retParms[0].ValueReference.InstancePath, nil
 }
 
-////////////////////////////////////////////////////////////
-//      RESPONSE Struct used for each SRP settings        //
-////////////////////////////////////////////////////////////
-
-type GetStoragePoolSettingsResp struct {
-	Entries []struct {
-		Content struct {
-			AtType                           string  `json:"@type"`
-			I_Changeable                     bool    `json:"i$Changeable"`
-			I_ChangeableType                 int     `json:"i$ChangeableType"`
-			I_CompressedElement              bool    `json:"i$CompressedElement"`
-			I_CompressionRate                int     `json:"i$CompressionRate"`
-			I_DataRedundancyGoal             int     `json:"i$DataRedundancyGoal"`
-			I_DataRedundancyMax              int     `json:"i$DataRedundancyMax"`
-			I_DataRedundancyMin              int     `json:"i$DataRedundancyMin"`
-			I_DeltaReservationGoal           int     `json:"i$DeltaReservationGoal"`
-			I_DeltaReservationMax            int     `json:"i$DeltaReservationMax"`
-			I_DeltaReservationMin            int     `json:"i$DeltaReservationMin"`
-			I_ElementName                    string  `json:"i$ElementName"`
-			I_EMCApproxAverageResponseTime   float64 `json:"i$EMCApproxAverageResponseTime"`
-			I_EMCDeduplicationRate           int     `json:"i$EMCDeduplicationRate"`
-			I_EMCEnableDIF                   int     `json:"i$EMCEnableDIF"`
-			I_EMCEnableEFDCache              int     `json:"i$EMCEnableEFDCache"`
-			I_EMCFastSetting                 string  `json:"i$EMCFastSetting"`
-			I_EMCParticipateInPowerSavings   int     `json:"i$EMCParticipateInPowerSavings"`
-			I_EMCPoolCompressionState        int     `json:"i$EMCPoolCompressionState"`
-			I_EMCPottedSetting               bool    `json:"i$EMCPottedSetting"`
-			I_EMCRaidGroupLUN                bool    `json:"i$EMCRaidGroupLUN"`
-			I_EMCRaidLevel                   string  `json:"i$EMCRaidLevel"`
-			I_EMCSLO                         string  `json:"i$EMCSLO"`
-			I_EMCSLOBaseName                 string  `json:"i$EMCSLOBaseName"`
-			I_EMCSLOdescription              string  `json:"i$EMCSLOdescription"`
-			I_EMCSRP                         string  `json:"i$EMCSRP"`
-			I_EMCStorageSettingType          int     `json:"i$EMCStorageSettingType"`
-			I_EMCUniqueID                    string  `json:"i$EMCUniqueID"`
-			I_EMCWorkload                    string  `json:"i$EMCWorkload"`
-			I_ExtentStripeLength             int     `json:"i$ExtentStripeLength"`
-			I_ExtentStripeLengthMax          int     `json:"i$ExtentStripeLengthMax"`
-			I_ExtentStripeLengthMin          int     `json:"i$ExtentStripeLengthMin"`
-			I_InitialStorageTierMethodology  int     `json:"i$InitialStorageTierMethodology"`
-			I_InitialStorageTieringSelection int     `json:"i$InitialStorageTieringSelection"`
-			I_InitialSynchronization         int     `json:"i$InitialSynchronization"`
-			I_InstanceID                     string  `json:"i$InstanceID"`
-			I_NoSinglePointOfFailure         bool    `json:"i$NoSinglePointOfFailure"`
-			I_PackageRedundancyGoal          int     `json:"i$PackageRedundancyGoal"`
-			I_PackageRedundancyMax           int     `json:"i$PackageRedundancyMax"`
-			I_PackageRedundancyMin           int     `json:"i$PackageRedundancyMin"`
-			I_SpaceLimit                     int     `json:"i$SpaceLimit"`
-			I_StorageExtentInitialUsage      int     `json:"i$StorageExtentInitialUsage"`
-			I_StoragePoolInitialUsage        int     `json:"i$StoragePoolInitialUsage"`
-			I_ThinProvisionedPoolType        int     `json:"i$ThinProvisionedPoolType"`
-			I_UseReplicationBuffer           int     `json:"i$UseReplicationBuffer"`
-			Links                            []struct {
-				Href string `json:"href"`
-				Rel  string `json:"rel"`
-			} `json:"links"`
-			Xmlns_i string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Gd_etag      string `json:"gd$etag"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
-}
-
-///////////////////////////////////////////////////////////////
-//                GET Storage Pool Settings                  //
-///////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////
+//                GET Storage Pool Capabilities                  //
+///////////////////////////////////////////////////////////////////
 func (smis *SMIS) GetStoragePoolCapabilities(srp_name *gowbem.InstanceName) (*gowbem.InstanceName, error) {
 	capabilities, err := smis.EnumerateInstanceNames("Symm_StoragePoolCapabilities")
 
-	name, err := smis.GetKeyFromInstanceName(srp_name, "InstanceID")
+	name, err := GetKeyFromInstanceName(srp_name, "InstanceID")
 	if err != nil {
 		return nil, err
 	}
 	for _, entry := range capabilities {
-		key, err := smis.GetKeyFromInstanceName(&entry, "InstanceID")
+		key, err := GetKeyFromInstanceName(&entry, "InstanceID")
 		if err != nil {
 			continue
 		}
@@ -625,6 +458,9 @@ func (smis *SMIS) GetStoragePoolCapabilities(srp_name *gowbem.InstanceName) (*go
 
 }
 
+///////////////////////////////////////////////////////////////
+//                GET Storage Pool Settings                  //
+///////////////////////////////////////////////////////////////
 func (smis *SMIS) GetStoragePoolSettings(srp_name *gowbem.InstanceName) ([]gowbem.ObjectPath, error) {
 	capabilities, err := smis.GetStoragePoolCapabilities(srp_name)
 	if err != nil {
@@ -670,12 +506,12 @@ func (smis *SMIS) GetSLOs(systemInstanceName *gowbem.InstanceName) (SLOs []SLO_S
 			return nil, err
 		}
 		for _, storagePoolSetting := range storagePoolSettings {
-			base_name, _ := smis.GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "EMCSLOBaseName")
-			resp_time, _ := smis.GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "EMCApproxAverageResponseTime")
-			srp, _ := smis.GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "EMCSRP")
-			workload, _ := smis.GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "EMCWorkload")
-			elem_name, _ := smis.GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "ElementName")
-			inst_id, _ := smis.GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "InstanceID")
+			base_name, _ := GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "EMCSLOBaseName")
+			resp_time, _ := GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "EMCApproxAverageResponseTime")
+			srp, _ := GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "EMCSRP")
+			workload, _ := GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "EMCWorkload")
+			elem_name, _ := GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "ElementName")
+			inst_id, _ := GetKeyFromInstanceName(storagePoolSetting.InstancePath.InstanceName, "InstanceID")
 			newSLO := SLO_Struct{
 				SLO_Name:    base_name.(string),
 				respTime:    resp_time.(float64),
@@ -749,125 +585,6 @@ func (smis *SMIS) RemoveMembersFromGroup(systemInstance *gowbem.InstanceName, gr
 	}
 	return err
 }
-
-/////////////////////////////////////////////////////////
-//               REQUEST Structs used for              //
-//   creating a storage hardware ID for an initiator   //
-/////////////////////////////////////////////////////////
-
-type PostStorageHardwareIDReq struct {
-	PostStorageHardwareIDRequestContent *PostStorageHardwareIDReqContent `json:"content"`
-}
-
-type PostStorageHardwareIDReqContent struct {
-	AtType    string `json:"@type"`
-	IDType    string `json:"IDType"`
-	StorageID string `json:"StorageID"`
-}
-
-////////////////////////////////////////////////////////////
-//            RESPONSE Struct used for                    //
-//   creating a storage hardware ID for an initiator      //
-////////////////////////////////////////////////////////////
-
-type PostStorageHardwareIDResp struct {
-	Entries []struct {
-		Content struct {
-			AtType       string `json:"@type"`
-			I_Parameters struct {
-				I_HardwareID struct {
-					AtType        string `json:"@type"`
-					E0_InstanceID string `json:"e0$InstanceID"`
-					Xmlns_e0      string `json:"xmlns$e0"`
-				} `json:"i$HardwareID"`
-			} `json:"i$parameters"`
-			I_ReturnValue int    `json:"i$returnValue"`
-			Xmlns_i       string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
-}
-
-/////////////////////////////////////////////////////////
-//               REQUEST Struct used for               //
-//       adding AND removing an initiator to/from      //
-//              a host group on the VMAX3.             //
-/////////////////////////////////////////////////////////
-
-type PostInitiatorToHGReq struct {
-	PostInitiatorToHGRequestContent *PostInitiatorToHGReqContent `json:"content"`
-}
-
-type PostInitiatorToHGReqContent struct {
-	AtType                                string                               `json:"@type"`
-	PostInitiatorToHGRequestContentMG     *PostInitiatorToHGReqContentMG       `json:"MaskingGroup"`
-	PostInitiatorToHGRequestContentMember []*PostInitiatorToHGReqContentMember `json:"Members"`
-}
-
-type PostInitiatorToHGReqContentMG struct {
-	AtType     string `json:"@type"`
-	InstanceID string `json:"InstanceID"`
-}
-
-type PostInitiatorToHGReqContentMember struct {
-	AtType     string `json:"@type"`
-	InstanceID string `json:"InstanceID"`
-}
-
-////////////////////////////////////////////////////////////
-//                RESPONSE Struct used for                //
-//        adding AND removing an initiator to/from        //
-//             a host group on the VMAX3.                 //
-////////////////////////////////////////////////////////////
-
-type PostInitiatorToHGResp struct {
-	Entries []struct {
-		Content struct {
-			AtType       string `json:"@type"`
-			I_Parameters struct {
-				I_Job struct {
-					AtType        string `json:"@type"`
-					E0_InstanceID string `json:"e0$InstanceID"`
-					Xmlns_e0      string `json:"xmlns$e0"`
-				} `json:"i$Job"`
-			} `json:"i$parameters"`
-			I_ReturnValue int    `json:"i$returnValue"`
-			Xmlns_i       string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
-}
-
-///////////////////////////////////////////////////////////////
-//             ADD Initiators to a Host Group                //
-//                                                           //
-//     1 -> Create Storage Hardware ID for the Initiator     //
-//     2 -> Add Storage Hardware ID to Initiator Group       //
-///////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////
 //          Create Storage Host Initiator                    //
@@ -1180,10 +897,10 @@ func (smis *SMIS) PostPortLogins(systemInstance *gowbem.InstanceName, initiator 
 
 	var portValues []PortValues
 	for _, ref := range retParms[0].ValueRefArray.ValueReference {
-		wwn, _ := smis.GetKeyFromInstanceName(initiator.InstanceName, "InstanceID")
+		wwn, _ := GetKeyFromInstanceName(initiator.InstanceName, "InstanceID")
 		wwnSplit := strings.Split(wwn.(string), "-+-")
 
-		eSystemName, _ := smis.GetKeyFromInstanceName(ref.InstancePath.InstanceName, "SystemName")
+		eSystemName, _ := GetKeyFromInstanceName(ref.InstancePath.InstanceName, "SystemName")
 		eSystemNameSplit := strings.Split(eSystemName.(string), "-+-")
 		PortAndDirector := strings.Split(eSystemNameSplit[2], "-")
 		PV := PortValues{

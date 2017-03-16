@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"GoWBEM/src/gowbem"
+	"github.com/kfrodgers/GoWBEM/src/gowbem"
 )
 
 type SMIS struct {
@@ -252,7 +252,7 @@ func (smis *SMIS) InvokeMethod(instanceName *gowbem.InstanceName, methodName str
 	return c.InvokeMethod(MakeObjectName(nil, instanceName), methodName, paramValues)
 }
 
-func (smis *SMIS) GetKeyFromInstanceName(instanceName *gowbem.InstanceName, keyName string) (interface{}, error) {
+func GetKeyFromInstanceName(instanceName *gowbem.InstanceName, keyName string) (interface{}, error) {
 	for _, key := range instanceName.KeyBinding {
 		if keyName == key.Name {
 			return key.KeyValue.KeyValue, nil
@@ -261,7 +261,7 @@ func (smis *SMIS) GetKeyFromInstanceName(instanceName *gowbem.InstanceName, keyN
 	return "", errors.New("Key not found")
 }
 
-func (smis *SMIS) GetPropertyByName(instance *gowbem.Instance, name string) (interface{}, error) {
+func GetPropertyByName(instance *gowbem.Instance, name string) (interface{}, error) {
 	for _, pr := range instance.Property {
 		if pr.Name == name {
 			return pr.Value.Value, nil
