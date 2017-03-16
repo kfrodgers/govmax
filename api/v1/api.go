@@ -200,6 +200,65 @@ func (smis *SMIS) GetVolumeByID(systemInstance *gowbem.InstanceName, volumeID st
 	return nil, errors.New("Volume not found")
 }
 
+///////////////////////////////////////////////////////////////
+//            GET a list of Storage Processor Systems        //
+///////////////////////////////////////////////////////////////
+
+func (smis *SMIS) GetStorageProcessorSystem(systemInstance *gowbem.InstanceName) ([]gowbem.ObjectPath, error) {
+	return smis.AssociatorNames(systemInstance, "", "Symm_StorageProcessorSystem", nil, nil)
+}
+
+///////////////////////////////////////////////////////////////
+//            GET a list of SCSI Endpoints (directors)       //
+///////////////////////////////////////////////////////////////
+
+func (smis *SMIS) GetScsiInitiators(systemInstance *gowbem.InstanceName) ([]gowbem.ObjectPath, error) {
+	service, err := smis.GetStorageHardwareIDManagementService(systemInstance)
+	if err != nil {
+		panic(err)
+	}
+	return smis.AssociatorNames(service, "", "SE_StorageHardwareID", nil, nil)
+}
+
+///////////////////////////////////////////////////////////////
+//            GET a list of SCSI Endpoints (directors)       //
+///////////////////////////////////////////////////////////////
+
+func (smis *SMIS) GetScsiEndpoints(storageProcessor *gowbem.InstanceName) ([]gowbem.ObjectPath, error) {
+	return smis.AssociatorNames(storageProcessor, "", "CIM_SCSIProtocolEndpoint", nil, nil)
+}
+
+///////////////////////////////////////////////////////////////
+//            GET a list of Front End Ports                  //
+///////////////////////////////////////////////////////////////
+func (smis *SMIS) GetTargetEndpoints(systemInstance *gowbem.InstanceName) ([]gowbem.ObjectPath, error) {
+	storageProcs, err := smis.GetStorageProcessorSystem(systemInstance)
+	if err != nil {
+		return nil, err
+	}
+
+	var frontEndPorts []gowbem.ObjectPath
+	for _, sp := range storageProcs {
+		adapter, err := smis.GetInstance(sp.InstancePath.InstanceName, false, nil)
+		if err != nil {
+			return nil, err
+		}
+		elementType, err := smis.GetPropertyByName(adapter, "EMCBSPElementType")
+		if elementType.(string) != "3" {
+			continue
+		}
+
+		ports, err := smis.GetScsiEndpoints(sp.InstancePath.InstanceName)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range ports {
+			frontEndPorts = append(frontEndPorts, p)
+		}
+	}
+	return frontEndPorts, nil
+}
+
 ///////////////////////////////////////////////////////////
 //            GET a Storage Volume by Name               //
 ///////////////////////////////////////////////////////////
@@ -631,107 +690,64 @@ func (smis *SMIS) GetSLOs(systemInstanceName *gowbem.InstanceName) (SLOs []SLO_S
 	return SLOs, nil
 }
 
-/////////////////////////////////////////////////////////
-//               REQUEST Structs used for              //
-//         adding AND removing a volume to/from        //
-//             a storage group on the VMAX3.           //
-/////////////////////////////////////////////////////////
-
-type PostVolumesToSGReq struct {
-	PostVolumesToSGRequestContent *PostVolumesToSGReqContent `json:"content"`
-}
-
-type PostVolumesToSGReqContent struct {
-	AtType                              string                             `json:"@type"`
-	PostVolumesToSGRequestContentMG     *PostVolumesToSGReqContentMG       `json:"MaskingGroup"`
-	PostVolumesToSGRequestContentMember []*PostVolumesToSGReqContentMember `json:"Members"`
-}
-
-type PostVolumesToSGReqContentMG struct {
-	AtType     string `json:"@type"`
-	InstanceID string `json:"InstanceID"`
-}
-
-type PostVolumesToSGReqContentMember struct {
-	AtType                  string `json:"@type"`
-	CreationClassName       string `json:"CreationClassName"`
-	DeviceID                string `json:"DeviceID"`
-	SystemCreationClassName string `json:"SystemCreationClassName"`
-	SystemName              string `json:"SystemName"`
-}
-
-////////////////////////////////////////////////////////////
-//               RESPONSE Struct used for                 //
-//         adding AND removing a volume to/from           //
-//             a storage group on the VMAX3.              //
-////////////////////////////////////////////////////////////
-
-type PostVolumesToSGResp struct {
-	Entries []struct {
-		Content struct {
-			AtType       string `json:"@type"`
-			I_Parameters struct {
-				I_Job struct {
-					AtType        string `json:"@type"`
-					E0_InstanceID string `json:"e0$InstanceID"`
-					Xmlns_e0      string `json:"xmlns$e0"`
-				} `json:"i$Job"`
-			} `json:"i$parameters"`
-			I_ReturnValue int    `json:"i$returnValue"`
-			Xmlns_i       string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
-}
-
 ///////////////////////////////////////////////////////////////
-//             ADD Volumes to a Storage Group                //
+//             ADD Members to a Group                //
 ///////////////////////////////////////////////////////////////
 
-func (smis *SMIS) PostVolumesToSG(systemInstance *gowbem.InstanceName, storageGroup *gowbem.InstancePath, volumes []gowbem.InstancePath) error {
+func (smis *SMIS) AddMembersToGroup(systemInstance *gowbem.InstanceName, group *gowbem.InstancePath, members []gowbem.InstancePath) error {
 	controller, err := smis.GetControllerConfigurationService(systemInstance)
 	if err != nil {
 		return err
 	}
 
-	var volumeArray gowbem.ValueRefArray
-	for _, vol := range volumes {
-		volumeArray.ValueReference = append(volumeArray.ValueReference, gowbem.ValueReference{InstancePath: &vol})
+	var memberArray gowbem.ValueRefArray
+	memberArray.ValueReference = make([]gowbem.ValueReference, len(members))
+	for idx := 0; idx < len(members); idx++ {
+		memberArray.ValueReference[idx].InstancePath = &members[idx]
 	}
 
 	var params []gowbem.IParamValue
-	params = append(params, gowbem.IParamValue{Name: "MaskingGroup", ValueReference: &gowbem.ValueReference{InstancePath: storageGroup}})
-	params = append(params, gowbem.IParamValue{Name: "Members", ValueRefArray: &volumeArray})
+	params = append(params, gowbem.IParamValue{Name: "MaskingGroup", ValueReference: &gowbem.ValueReference{InstancePath: group}})
+	params = append(params, gowbem.IParamValue{Name: "Members", ValueRefArray: &memberArray})
 
 	retValue, retParms, err := smis.InvokeMethod(controller, "AddMembers", params)
 	if err != nil {
 		return err
 	}
 	if retValue != 0 {
-		_, err = smis.WaitForJob(retParms[0].ValueReference.InstancePath, "SE_DeviceMaskingGroup")
+		_, err = smis.WaitForJob(retParms[0].ValueReference.InstancePath, group.InstanceName.ClassName)
 	}
 	return err
 }
 
 ///////////////////////////////////////////////////////////////
-//          REMOVE Volumes from a Storage Group              //
+//          REMOVE Members from a  Group              //
 ///////////////////////////////////////////////////////////////
 
-func (smis *SMIS) RemoveVolumeFromSG(req *PostVolumesToSGReq, sid string) (resp *PostVolumesToSGResp, err error) {
-	err = smis.query("POST", "/ecom/edaa/root/emc/instances/Symm_ControllerConfigurationService/CreationClassName::Symm_ControllerConfigurationService,Name::EMCControllerConfigurationService,SystemCreationClassName::Symm_StorageSystem,SystemName::"+sid+"/action/RemoveMembers", req, &resp)
-	return resp, err
+func (smis *SMIS) RemoveMembersFromGroup(systemInstance *gowbem.InstanceName, group *gowbem.InstancePath, members []gowbem.InstancePath) error {
+	controller, err := smis.GetControllerConfigurationService(systemInstance)
+	if err != nil {
+		return err
+	}
+
+	var memberArray gowbem.ValueRefArray
+	memberArray.ValueReference = make([]gowbem.ValueReference, len(members))
+	for idx := 0; idx < len(members); idx++ {
+		memberArray.ValueReference[idx].InstancePath = &members[idx]
+	}
+
+	var params []gowbem.IParamValue
+	params = append(params, gowbem.IParamValue{Name: "MaskingGroup", ValueReference: &gowbem.ValueReference{InstancePath: group}})
+	params = append(params, gowbem.IParamValue{Name: "Members", ValueRefArray: &memberArray})
+
+	retValue, retParms, err := smis.InvokeMethod(controller, "RemoveMembers", params)
+	if err != nil {
+		return err
+	}
+	if retValue != 0 {
+		_, err = smis.WaitForJob(retParms[0].ValueReference.InstancePath, group.InstanceName.ClassName)
+	}
+	return err
 }
 
 /////////////////////////////////////////////////////////
@@ -853,111 +869,52 @@ type PostInitiatorToHGResp struct {
 //     2 -> Add Storage Hardware ID to Initiator Group       //
 ///////////////////////////////////////////////////////////////
 
-func (smis *SMIS) PostStorageHardwareID(req *PostStorageHardwareIDReq, sid string) (resp *PostStorageHardwareIDResp, err error) {
-	err = smis.query("POST", "/ecom/edaa/root/emc/instances/Symm_StorageHardwareIDManagementService/CreationClassName::Symm_StorageHardwareIDManagementService,Name::EMCStorageHardwareIDManagementService,SystemCreationClassName::Symm_StorageSystem,SystemName::"+sid+"/action/CreateStorageHardwareID", req, &resp)
-	return resp, err
-}
-
-func (smis *SMIS) PostInitiatorToHG(req *PostInitiatorToHGReq, sid string) (resp *PostInitiatorToHGResp, err error) {
-	err = smis.query("POST", "/ecom/edaa/root/emc/instances/Symm_ControllerConfigurationService/CreationClassName::Symm_ControllerConfigurationService,Name::EMCControllerConfigurationService,SystemCreationClassName::Symm_StorageSystem,SystemName::"+sid+"/action/AddMembers", req, &resp)
-	return resp, err
-}
-
 ///////////////////////////////////////////////////////////////
-//          REMOVE Initiators from a Host Group              //
-//     (Requires a Storage Hardware ID from the Initiator)   //
+//          Create Storage Host Initiator                    //
+//     idType == 2 for WWN                                   //
+//     idType == 5 for IQN                                   //
 ///////////////////////////////////////////////////////////////
+func (smis *SMIS) PostStorageHardwareID(systemInstance *gowbem.InstanceName, storageID string, idType int) (*gowbem.InstancePath, error) {
+	management, err := smis.GetStorageHardwareIDManagementService(systemInstance)
+	if err != nil {
+		return nil, err
+	}
 
-func (smis *SMIS) RemoveInitiatorFromHG(req *PostInitiatorToHGReq, sid string) (resp *PostInitiatorToHGResp, err error) {
-	err = smis.query("POST", "/ecom/edaa/root/emc/instances/Symm_ControllerConfigurationService/CreationClassName::Symm_ControllerConfigurationService,Name::EMCControllerConfigurationService,SystemCreationClassName::Symm_StorageSystem,SystemName::"+sid+"/action/RemoveMembers", req, &resp)
-	return resp, err
+	if idType != 2 && idType != 5 {
+		return nil, errors.New("Invalid type, must be 2 or 5")
+	}
+
+	var params []gowbem.IParamValue
+	params = append(params, gowbem.IParamValue{Name: "StorageID", Value: &gowbem.Value{storageID}})
+	params = append(params, gowbem.IParamValue{Name: "IDType", Value: &gowbem.Value{strconv.Itoa(idType)}})
+
+	retValue, retParms, err := smis.InvokeMethod(management, "CreateStorageHardwareID", params)
+	if err != nil {
+		return nil, err
+	}
+	if retValue != 0 || len(retParms) == 0 {
+		return nil, errors.New("Job failed, rc = " + string(retValue))
+	}
+	return retParms[0].ValueReference.InstancePath, nil
 }
 
-/////////////////////////////////////////////////////////
-//               REQUEST Structs used for              //
-//         adding AND removing a port to/from          //
-//           a port group on the VMAX3.                //
-/////////////////////////////////////////////////////////
+func (smis *SMIS) DeleteStorageHardwareID(systemInstance *gowbem.InstanceName, hardwardId *gowbem.InstancePath) error {
+	management, err := smis.GetStorageHardwareIDManagementService(systemInstance)
+	if err != nil {
+		return err
+	}
 
-type PostPortToPGReq struct {
-	PostPortToPGRequestContent *PostPortToPGReqContent `json:"content"`
-}
+	var params []gowbem.IParamValue
+	params = append(params, gowbem.IParamValue{Name: "HardwareID", ValueReference: &gowbem.ValueReference{InstancePath: hardwardId}})
 
-type PostPortToPGReqContent struct {
-	AtType                           string                          `json:"@type"`
-	PostPortToPGRequestContentMG     *PostPortToPGReqContentMG       `json:"MaskingGroup"`
-	PostPortToPGRequestContentMember []*PostPortToPGReqContentMember `json:"Members"`
-}
-
-type PostPortToPGReqContentMG struct {
-	AtType     string `json:"@type"`
-	InstanceID string `json:"InstanceID"`
-}
-
-type PostPortToPGReqContentMember struct {
-	AtType                  string `json:"@type"`
-	CreationClassName       string `json:"CreationClassName"`
-	Name                    string `json:"Name"`
-	SystemCreationClassName string `json:"SystemCreationClassName"`
-	SystemName              string `json:"SystemName"`
-}
-
-///////////////////////////////////////////////////////
-//            RESPONSE Struct used for               //
-//       adding AND removing a port to/from          //
-//            a port group on the VMAX3.             //
-///////////////////////////////////////////////////////
-
-type PostPortToPGResp struct {
-	Entries []struct {
-		Content struct {
-			AtType       string `json:"@type"`
-			I_Parameters struct {
-				I_Job struct {
-					AtType        string `json:"@type"`
-					E0_InstanceID string `json:"e0$InstanceID"`
-					Xmlns_e0      string `json:"xmlns$e0"`
-				} `json:"i$Job"`
-			} `json:"i$parameters"`
-			I_ReturnValue int    `json:"i$returnValue"`
-			Xmlns_i       string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
-}
-
-/////////////////////////////////////////////////////////////////////
-//                     ADD Ports to a Port Group                   //
-//                                                                 //
-//    1 -> GET a list of Available Interfaces (aka FE Directors)   //
-// 2 -> GET a list of Front End Adapter Endpoints (aka FE Ports)   //
-//                  3 -> ADD Ports to Port Groups                  //
-/////////////////////////////////////////////////////////////////////
-
-func (smis *SMIS) PostPortToPG(req *PostPortToPGReq, sid string) (resp *PostPortToPGResp, err error) {
-	err = smis.query("POST", "/ecom/edaa/root/emc/instances/Symm_ControllerConfigurationService/CreationClassName::Symm_ControllerConfigurationService,Name::EMCControllerConfigurationService,SystemCreationClassName::Symm_StorageSystem,SystemName::"+sid+"/action/AddMembers", req, &resp)
-	return resp, err
-}
-
-///////////////////////////////////////////////////////////////
-//             REMOVE Ports from a Port Group                //
-///////////////////////////////////////////////////////////////
-
-func (smis *SMIS) RemovePortFromPG(req *PostPortToPGReq, sid string) (resp *PostPortToPGResp, err error) {
-	err = smis.query("POST", "/ecom/edaa/root/emc/instances/Symm_ControllerConfigurationService/CreationClassName::Symm_ControllerConfigurationService,Name::EMCControllerConfigurationService,SystemCreationClassName::Symm_StorageSystem,SystemName::"+sid+"/action/RemoveMembers", req, &resp)
-	return resp, err
+	retValue, retParms, err := smis.InvokeMethod(management, "DeleteStorageHardwareID", params)
+	if err != nil {
+		return err
+	}
+	if retValue != 0 {
+		_, err = smis.WaitForJob(retParms[0].ValueReference.InstancePath, hardwardId.InstanceName.ClassName)
+	}
+	return err
 }
 
 /////////////////////////////////////////////////////////
@@ -1069,77 +1026,19 @@ func GetBaremetalHBA() (myHosts []HostAdapter, err error) {
 	return myHosts, nil
 }
 
-//////////////////////////////////////////////////////////////
-//             REQUEST Structs used for any                 //
-//             group deletion on the VMAX3.                 //
-//                                                          //
-//   Storage Group (SG) - AtType SE_DeviceMaskingGroup      //
-//      Port Group (PG) - AtType SE_TargetMaskingGroup      //
-//  Initiator Group (IG) - AtType SE_InitiatorMaskingGroup  //
-//////////////////////////////////////////////////////////////
-
-type DeleteGroupReq struct {
-	DeleteGroupRequestContent *DeleteGroupReqContent `json:"content"`
-}
-
-type DeleteGroupReqContent struct {
-	AtType                                string                             `json:"@type"`
-	DeleteGroupRequestContentMaskingGroup *DeleteGroupReqContentMaskingGroup `json:"MaskingGroup"`
-}
-
-type DeleteGroupReqContentMaskingGroup struct {
-	AtType     string `json:"@type"`
-	InstanceID string `json:"InstanceID"`
-}
-
-////////////////////////////////////////////////////////////
-//           RESPONSE Struct used for any                 //
-//           group deletion on the VMAX3.                 //
-////////////////////////////////////////////////////////////
-
-type DeleteGroupResp struct {
-	Entries []struct {
-		Content struct {
-			AtType       string `json:"@type"`
-			I_parameters struct {
-				I_Job struct {
-					AtType        string `json:"@type"`
-					E0_InstanceID string `json:"e0$InstanceID"`
-					Xmlns_e0      string `json:"xmlns$e0"`
-				} `json:"i$Job"`
-			} `json:"i$parameters"`
-			I_returnValue int    `json:"i$returnValue"`
-			Xmlns_i       string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
-}
-
 /////////////////////////////////////////////////////////////////
 //                  DELETE an Array Group                      //
 // Type Depends on AtType field specified in requesting struct //
 /////////////////////////////////////////////////////////////////
 
-func (smis *SMIS) PostDeleteGroup(systemInstance *gowbem.InstanceName, instPath *gowbem.InstancePath, force bool) error {
+func (smis *SMIS) PostDeleteGroup(systemInstance *gowbem.InstanceName, group *gowbem.InstancePath, force bool) error {
 	controller, err := smis.GetControllerConfigurationService(systemInstance)
 	if err != nil {
 		return err
 	}
 
 	var params []gowbem.IParamValue
-	params = append(params, gowbem.IParamValue{Name: "MaskingGroup", ValueReference: &gowbem.ValueReference{InstancePath: instPath}})
+	params = append(params, gowbem.IParamValue{Name: "MaskingGroup", ValueReference: &gowbem.ValueReference{InstancePath: group}})
 	params = append(params, gowbem.IParamValue{Name: "Force", Value: &gowbem.Value{strconv.FormatBool(force)}})
 
 	retValue, retParms, err := smis.InvokeMethod(controller, "DeleteGroup", params)
@@ -1147,75 +1046,38 @@ func (smis *SMIS) PostDeleteGroup(systemInstance *gowbem.InstanceName, instPath 
 		return err
 	}
 	if retValue != 0 {
-		_, err = smis.WaitForJob(retParms[0].ValueReference.InstancePath, "SE_DeviceMaskingGroup")
+		_, err = smis.WaitForJob(retParms[0].ValueReference.InstancePath, group.InstanceName.ClassName)
 	}
 	return err
-}
-
-//////////////////////////////////////////////////////////////
-//             REQUEST Structs used for any                 //
-//             volume deletion on the VMAX3.                //
-//////////////////////////////////////////////////////////////
-
-type DeleteVolReq struct {
-	DeleteVolRequestContent *DeleteVolReqContent `json:"content"`
-}
-
-type DeleteVolReqContent struct {
-	AtType                         string                      `json:"@type"`
-	DeleteVolRequestContentElement *DeleteVolReqContentElement `json:"TheElement"`
-}
-
-type DeleteVolReqContentElement struct {
-	AtType                  string `json:"@type"`
-	DeviceID                string `json:"DeviceID"`
-	CreationClassName       string `json:"CreationClassName"`
-	SystemName              string `json:"SystemName"`
-	SystemCreationClassName string `json:"SystemCreationClassName"`
-}
-
-////////////////////////////////////////////////////////////
-//           RESPONSE Struct used for any                 //
-//           volume deletion on the VMAX3.                //
-////////////////////////////////////////////////////////////
-
-type DeleteVolResp struct {
-	Entries []struct {
-		Content struct {
-			AtType       string `json:"@type"`
-			I_Parameters struct {
-				I_Job struct {
-					AtType        string `json:"@type"`
-					E0_InstanceID string `json:"e0$InstanceID"`
-					Xmlns_e0      string `json:"xmlns$e0"`
-				} `json:"i$Job"`
-			} `json:"i$parameters"`
-			I_ReturnValue int    `json:"i$returnValue"`
-			Xmlns_i       string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
 }
 
 /////////////////////////////////////////////////////////////////
 //                  DELETE a Volume                            //
 /////////////////////////////////////////////////////////////////
 
-func (smis *SMIS) PostDeleteVol(req *DeleteVolReq, sid string) (resp *DeleteVolResp, err error) {
-	err = smis.query("POST", "/ecom/edaa/root/emc/instances/Symm_StorageConfigurationService/CreationClassName::Symm_StorageConfigurationService,Name::EMCStorageConfigurationService,SystemCreationClassName::Symm_StorageSystem,SystemName::"+sid+"/action/ReturnToStoragePool", req, &resp)
-	return resp, err
+func (smis *SMIS) PostDeleteVol(systemInstance *gowbem.InstanceName, volumes []gowbem.InstancePath) error {
+	controller, err := smis.GetStorageConfigurationService(systemInstance)
+	if err != nil {
+		return err
+	}
+
+	var volumeArray gowbem.ValueRefArray
+	volumeArray.ValueReference = make([]gowbem.ValueReference, len(volumes))
+	for idx := 0; idx < len(volumes); idx++ {
+		volumeArray.ValueReference[idx].InstancePath = &volumes[idx]
+	}
+
+	var params []gowbem.IParamValue
+	params = append(params, gowbem.IParamValue{Name: "TheElements", ValueRefArray: &volumeArray})
+
+	retValue, retParms, err := smis.InvokeMethod(controller, "ReturnElementsToStoragePool", params)
+	if err != nil {
+		return err
+	}
+	if retValue != 0 {
+		_, err = smis.WaitForJob(retParms[0].ValueReference.InstancePath, "Symm_StorageVolume")
+	}
+	return err
 }
 
 //////////////////////////////////////////////////////////////
@@ -1285,54 +1147,9 @@ func (smis *SMIS) PostDeleteMaskingView(req *DeleteMaskingViewReq, sid string) (
 }
 
 /////////////////////////////////////////////////////////
-//               REQUEST Structs used for              //
+//               Structs used for                      //
 //        getting Ports logged in, on the VMAX3.       //
 /////////////////////////////////////////////////////////
-
-type PostPortLoggedInReq struct {
-	PostPortLoggedInRequestContent *PostPortLoggedInReqContent `json:"content"`
-}
-
-type PostPortLoggedInReqContent struct {
-	PostPortLoggedInRequestHardwareID *PostPortLoggedInReqHardwareID `json:"HardwareID"`
-	AtType                            string                         `json:"@type"`
-}
-
-type PostPortLoggedInReqHardwareID struct {
-	AtType     string `json:"@type"`
-	InstanceID string `json: "InstanceID"`
-}
-
-/////////////////////////////////////////////////////////
-//               RESPONSE Structs used for             //
-//        getting Ports logged in, on the VMAX3.       //
-/////////////////////////////////////////////////////////
-
-type PostPortLoginResp struct {
-	Entries []struct {
-		Content struct {
-			_type        string `json:"@type"`
-			I_parameters struct {
-				I_TargetEndpoints []map[string]string `json:"i$TargetEndpoints"`
-			} `json:"i$parameters"`
-			I_returnValue int    `json:"i$returnValue"`
-			Xmlns_i       string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
-}
 
 type PortValues struct {
 	WWN        string
@@ -1341,52 +1158,38 @@ type PortValues struct {
 }
 
 ///////////////////////////////////////////////////////////////
-//           Get Director Ports                              //
+//           Getting Ports Logged In                         //
 ///////////////////////////////////////////////////////////////
-func (smis *SMIS) GetTargetEndpoints(systemInstanceName *gowbem.InstanceName) ([]gowbem.InstanceName, error) {
-	processorSystems, err := smis.EnumerateInstanceNames("Symm_StorageProcessorSystem")
+func (smis *SMIS) PostPortLogins(systemInstance *gowbem.InstanceName, initiator *gowbem.InstancePath) ([]PortValues, error) {
+
+	service, err := smis.GetStorageHardwareIDManagementService(systemInstance)
 	if err != nil {
 		return nil, err
 	}
 
-	sysName, _ := smis.GetKeyFromInstanceName(systemInstanceName, "Name")
+	var params []gowbem.IParamValue
+	params = append(params, gowbem.IParamValue{Name: "HardwareID", ValueReference: &gowbem.ValueReference{InstancePath: initiator}})
 
-	results := make([]gowbem.InstanceName, 0)
-	for _, service := range processorSystems {
-		name, _ := smis.GetKeyFromInstanceName(&service, "Name")
-		if strings.HasPrefix(name.(string), sysName.(string)) {
-			results = append(results, service)
-		}
+	retValue, retParms, err := smis.InvokeMethod(service, "EMCGetTargetEndpoints", params)
+	if err != nil {
+		return nil, err
 	}
-	return results, nil
-}
+	if retValue != 0 {
+		return nil, errors.New("Job failed, rc = " + strconv.Itoa(retValue))
+	}
 
-///////////////////////////////////////////////////////////////
-//           Getting Ports Logged In                         //
-///////////////////////////////////////////////////////////////
-func (smis *SMIS) PostPortLogins(req *PostPortLoggedInReq, sid string) (portvalues1 []PortValues, err error) {
-
-	var resp *PostPortLoginResp
-	var wwn string = req.PostPortLoggedInRequestContent.PostPortLoggedInRequestHardwareID.InstanceID
-	wwn = "W-+-" + wwn
-	req.PostPortLoggedInRequestContent.PostPortLoggedInRequestHardwareID.InstanceID = wwn
-	err = smis.query("POST", "/ecom/edaa/root/emc/instances/Symm_StorageHardwareIDManagementService/CreationClassName::Symm_StorageHardwareIDManagementService,Name::EMCStorageHardwareIDManagementService,SystemCreationClassName::Symm_StorageSystem,SystemName::"+sid+"/action/EMCGetTargetEndpoints", req, &resp)
 	var portValues []PortValues
-	var length = len(resp.Entries[0].Content.I_parameters.I_TargetEndpoints)
-	for i := 0; i < length; i++ {
-		var m map[string]string
-		var name string
-		m = resp.Entries[0].Content.I_parameters.I_TargetEndpoints[i]
-		name = "e" + strconv.Itoa(i) + "$SystemName"
-		var eSystemName string = m[name]
-		eSystemNameSplit := strings.Split(eSystemName, "-+-")
+	for _, ref := range retParms[0].ValueRefArray.ValueReference {
+		wwn, _ := smis.GetKeyFromInstanceName(initiator.InstanceName, "InstanceID")
+		wwnSplit := strings.Split(wwn.(string), "-+-")
+
+		eSystemName, _ := smis.GetKeyFromInstanceName(ref.InstancePath.InstanceName, "SystemName")
+		eSystemNameSplit := strings.Split(eSystemName.(string), "-+-")
 		PortAndDirector := strings.Split(eSystemNameSplit[2], "-")
-		portNumber := PortAndDirector[0]
-		director := PortAndDirector[1]
 		PV := PortValues{
-			WWN:        wwn,
-			PortNumber: portNumber,
-			Director:   director,
+			WWN:        wwnSplit[1],
+			PortNumber: PortAndDirector[0],
+			Director:   PortAndDirector[1],
 		}
 		portValues = append(portValues, PV)
 	}
