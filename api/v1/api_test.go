@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -451,55 +452,105 @@ func TestPostPortLogins(*testing.T) {
 	}
 }
 
-func TestPostCreateMaskingView(*testing.T) {
+func TestPostDeleteMV(t *testing.T) {
+	var mvName string = "xxxxxx_mv"
 
-	panic("not ported")
-	PostCreateMaskingViewReq := &PostCreateMaskingViewReq{
-		PostCreateMaskingViewRequestContent: &PostCreateMaskingViewReqContent{
-			AtType:      "http://schemas.emc.com/ecom/edaa/root/emc/Symm_ControllerconfigurationService",
-			ElementName: "Sak_MV_TEST",
-			PostInitiatorMaskingGroupRequest: &PostInitiatorMaskingGroupReq{
-				AtType:     "http://schemas.emc.com/ecom/edaa/root/emc/SE_InitiatorMaskingGroup",
-				InstanceID: "SYMMETRIX-+-000196701380-+-tt",
-			},
-			PostTargetMaskingGroupRequest: &PostTargetMaskingGroupReq{
-				AtType:     "http://schemas.emc.com/ecom/edaa/root/emc/SE_TargetMaskingGroup",
-				InstanceID: "SYMMETRIX-+-000196701380-+-ttt",
-			},
-			PostDeviceMaskingGroupRequest: &PostDeviceMaskingGroupReq{
-				AtType:     "http://schemas.emc.com/ecom/edaa/root/emc/SE_DeviceMaskingGroup",
-				InstanceID: "SYMMETRIX-+-000196701380-+-SMI_sg2",
-			},
-		},
-	}
-
-	fmt.Println(fmt.Sprintf("%+v", PostCreateMaskingViewReq))
-
-	storageGroup, err := smis.PostCreateMaskingView(PostCreateMaskingViewReq, testingSID)
+	mvs, err := smis.GetMaskingViews(testingInstance)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(fmt.Sprintf("%+v", storageGroup))
+
+	var found bool = false
+	for _, mv := range mvs {
+		name, _ := GetKeyFromInstanceName(mv.InstancePath.InstanceName, "DeviceID")
+		if name.(string) == mvName {
+			DumpInstanceClass(mv.InstancePath.InstanceName)
+			err = smis.PostDeleteMaskingView(testingInstance, mv.InstancePath)
+			if err != nil {
+				t.Log(err.Error())
+				t.Fail()
+			}
+			found = true
+			break
+		}
+	}
+	if found {
+		t.Fail()
+	}
 }
 
-func TestPostDeleteMV(*testing.T) {
-	panic("not ported")
-	DeleteMVRequest := &DeleteMaskingViewReq{
-		DeleteMaskingViewRequestContent: &DeleteMaskingViewReqContent{
-			AtType: "http://schemas.emc.com/ecom/edaa/root/emc/Symm_ControllerConfigurationService",
-			DeleteMaskingViewRequestContentPC: &DeleteMaskingViewReqContentPC{
-				AtType:                  "http://schemas.emc.com/ecom/edaa/root/emc/Symm_LunMaskingView",
-				DeviceID:                "Kim_MV",
-				CreationClassName:       "Symm_LunMaskingView",
-				SystemName:              "SYMMETRIX-+-" + testingSID,
-				SystemCreationClassName: "Symm_StorageSystem",
-			},
-		},
-	}
+func TestPostCreateMaskingView(t *testing.T) {
+	var sgName string = "xxxxxx_sg"
+	var igName string = "xxxxxx_ig"
+	var pgName string = "xxxxxx_pg"
+	var mvName string = "xxxxxx_mv"
 
-	deleteMV, err := smis.PostDeleteMaskingView(DeleteMVRequest, testingSID)
+	sgs, err := smis.GetStorageGroups(testingInstance)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(fmt.Sprintf("%+v", deleteMV))
+
+	igs, err := smis.GetHostGroups(testingInstance)
+	if err != nil {
+		panic(err)
+	}
+
+	pgs, err := smis.GetPortGroups(testingInstance)
+	if err != nil {
+		panic(err)
+	}
+
+	var viewSg *gowbem.InstancePath
+	for _, sg := range sgs {
+		name, _ := GetKeyFromInstanceName(sg.InstancePath.InstanceName, "InstanceID")
+		if strings.HasSuffix(name.(string), sgName) {
+			DumpInstanceClass(sg.InstancePath.InstanceName)
+			viewSg = sg.InstancePath
+			break
+		}
+	}
+	if viewSg == nil {
+		t.Log(sgName + ": sg not found")
+		t.Fail()
+	}
+
+	var viewIg *gowbem.InstancePath
+	for _, ig := range igs {
+		name, _ := GetKeyFromInstanceName(ig.InstancePath.InstanceName, "InstanceID")
+		if strings.HasSuffix(name.(string), igName) {
+			DumpInstanceClass(ig.InstancePath.InstanceName)
+			viewIg = ig.InstancePath
+			break
+		}
+	}
+	if viewIg == nil {
+		t.Log(igName + ": ig not found")
+		t.Fail()
+	}
+
+	var viewPg *gowbem.InstancePath
+	for _, pg := range pgs {
+		name, _ := GetKeyFromInstanceName(pg.InstancePath.InstanceName, "InstanceID")
+		if strings.HasSuffix(name.(string), pgName) {
+			DumpInstanceClass(pg.InstancePath.InstanceName)
+			viewPg = pg.InstancePath
+			break
+		}
+	}
+	if viewPg == nil {
+		t.Log(pgName + ": pg not found")
+		t.Fail()
+	}
+
+	if !t.Failed() {
+		t.Log("Making View: " + mvName)
+		mv, err := smis.PostCreateMaskingView(testingInstance, mvName, viewSg, viewIg, viewPg)
+		if err != nil {
+			t.Log(err.Error())
+			t.Fail()
+		}
+		for _, o := range mv {
+			DumpInstanceClass(o.InstancePath.InstanceName)
+		}
+	}
 }

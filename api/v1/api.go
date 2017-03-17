@@ -634,83 +634,33 @@ func (smis *SMIS) DeleteStorageHardwareID(systemInstance *gowbem.InstanceName, h
 	return err
 }
 
-/////////////////////////////////////////////////////////
-//               REQUEST Structs used for              //
-//        creating a masking view on the VMAX3.        //
-/////////////////////////////////////////////////////////
-
-type PostCreateMaskingViewReq struct {
-	PostCreateMaskingViewRequestContent *PostCreateMaskingViewReqContent `json:"content"`
-}
-
-type PostCreateMaskingViewReqContent struct {
-	AtType                           string                        `json:"@type"`
-	ElementName                      string                        `json:"ElementName"`
-	PostInitiatorMaskingGroupRequest *PostInitiatorMaskingGroupReq `json:"InitiatorMaskingGroup"`
-	PostTargetMaskingGroupRequest    *PostTargetMaskingGroupReq    `json:"TargetMaskingGroup"`
-	PostDeviceMaskingGroupRequest    *PostDeviceMaskingGroupReq    `json:"DeviceMaskingGroup"`
-}
-
-type PostInitiatorMaskingGroupReq struct {
-	AtType     string `json:"@type"`
-	InstanceID string `json:"InstanceID"`
-}
-type PostTargetMaskingGroupReq struct {
-	AtType     string `json:"@type"`
-	InstanceID string `json:"InstanceID"`
-}
-type PostDeviceMaskingGroupReq struct {
-	AtType     string `json:"@type"`
-	InstanceID string `json:"InstanceID"`
-}
-
-////////////////////////////////////////////////////////////
-//            RESPONSE Struct used for                    //
-//        creating a masking view on the VMAX3.           //
-////////////////////////////////////////////////////////////
-
-type PostCreateMaskingViewResp struct {
-	Xmlns_gd string `json:"xmlns$gd"`
-	Updated  string `json:"updated"`
-	ID       string `json:"id"`
-
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-
-	Entries []struct {
-		Updated string `json:"updated"`
-
-		Links []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-
-		Content_type string `json:"content-type"`
-
-		Content struct {
-			AtType       string `json:"@type"`
-			Xmlns_i      string `json:"xmlns$i"`
-			I_Parameters struct {
-				I_Job struct {
-					AtType        string `json:"@type"`
-					Xmlns_e0      string `json:"xmlns$e0"`
-					E0_InstanceID string `json:"e0$InstanceID"`
-				} `json:"i$Job"`
-			} `json:"i$parameters"`
-			I_ReturnValue int `json:"i$returnValue"`
-		} `json:"content"`
-	} `json:"entries"`
-}
-
 ///////////////////////////////////////////////////////////////
 //                  CREATE a Masking View                    //
 ///////////////////////////////////////////////////////////////
 
-func (smis *SMIS) PostCreateMaskingView(req *PostCreateMaskingViewReq, sid string) (resp *PostCreateMaskingViewResp, err error) {
-	err = smis.query("POST", "/ecom/edaa/root/emc/instances/Symm_ControllerConfigurationService/CreationClassName::Symm_ControllerConfigurationService,Name::EMCControllerConfigurationService,SystemCreationClassName::Symm_StorageSystem,SystemName::"+sid+"/action/CreateMaskingView", req, &resp)
-	return resp, err
+func (smis *SMIS) PostCreateMaskingView(systemInstance *gowbem.InstanceName, mvName string, sg, ig, pg *gowbem.InstancePath) ([]gowbem.ObjectPath, error) {
+	controller, err := smis.GetControllerConfigurationService(systemInstance)
+	if err != nil {
+		return nil, err
+	}
+
+	var params []gowbem.IParamValue
+	params = append(params, gowbem.IParamValue{Name: "ElementName", Value: &gowbem.Value{mvName}})
+	params = append(params, gowbem.IParamValue{Name: "DeviceMaskingGroup", ValueReference: &gowbem.ValueReference{InstancePath: sg}})
+	params = append(params, gowbem.IParamValue{Name: "InitiatorMaskingGroup", ValueReference: &gowbem.ValueReference{InstancePath: ig}})
+	params = append(params, gowbem.IParamValue{Name: "TargetMaskingGroup", ValueReference: &gowbem.ValueReference{InstancePath: pg}})
+
+	_, retValues, err := smis.InvokeMethod(controller, "CreateMaskingView", params)
+	if err != nil {
+		return nil, err
+	}
+
+	idx, _ := smis.FindJobIndex(retValues)
+	if idx == -1 {
+		return nil, errors.New("Job instance not found")
+	}
+
+	return smis.WaitForJob(retValues[idx].ValueReference.InstancePath, "Symm_LunMaskingView")
 }
 
 ////////////////////////////////////////////////////////////////
@@ -797,70 +747,28 @@ func (smis *SMIS) PostDeleteVol(systemInstance *gowbem.InstanceName, volumes []g
 	return err
 }
 
-//////////////////////////////////////////////////////////////
-//             REQUEST Structs used for any                 //
-//          masking view deletion on the VMAX3.             //
-//////////////////////////////////////////////////////////////
-
-type DeleteMaskingViewReq struct {
-	DeleteMaskingViewRequestContent *DeleteMaskingViewReqContent `json:"content"`
-}
-
-type DeleteMaskingViewReqContent struct {
-	AtType                            string                         `json:"@type"`
-	DeleteMaskingViewRequestContentPC *DeleteMaskingViewReqContentPC `json:"ProtocolController"`
-}
-
-type DeleteMaskingViewReqContentPC struct {
-	AtType                  string `json:"@type"`
-	DeviceID                string `json:"DeviceID"`
-	CreationClassName       string `json:"CreationClassName"`
-	SystemName              string `json:"SystemName"`
-	SystemCreationClassName string `json:"SystemCreationClassName"`
-}
-
-////////////////////////////////////////////////////////////
-//           RESPONSE Struct used for any                 //
-//        masking view deletion on the VMAX3.             //
-////////////////////////////////////////////////////////////
-
-type DeleteMaskingViewResp struct {
-	Entries []struct {
-		Content struct {
-			AtType       string `json:"@type"`
-			I_parameters struct {
-				I_Job struct {
-					AtType        string `json:"@type"`
-					E0_InstanceID string `json:"e0$InstanceID"`
-					Xmlns_e0      string `json:"xmlns$e0"`
-				} `json:"i$Job"`
-			} `json:"i$parameters"`
-			I_returnValue int    `json:"i$returnValue"`
-			Xmlns_i       string `json:"xmlns$i"`
-		} `json:"content"`
-		Content_type string `json:"content-type"`
-		Links        []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-		Updated string `json:"updated"`
-	} `json:"entries"`
-	ID    string `json:"id"`
-	Links []struct {
-		Href string `json:"href"`
-		Rel  string `json:"rel"`
-	} `json:"links"`
-	Updated  string `json:"updated"`
-	Xmlns_gd string `json:"xmlns$gd"`
-}
-
 /////////////////////////////////////////////////////////////////
 //               DELETE a Masking View                         //
 /////////////////////////////////////////////////////////////////
 
-func (smis *SMIS) PostDeleteMaskingView(req *DeleteMaskingViewReq, sid string) (resp *DeleteMaskingViewResp, err error) {
-	err = smis.query("POST", "/ecom/edaa/root/emc/instances/Symm_ControllerConfigurationService/CreationClassName::Symm_ControllerConfigurationService,Name::EMCControllerConfigurationService,SystemCreationClassName::Symm_StorageSystem,SystemName::"+sid+"/action/DeleteMaskingView", req, &resp)
-	return resp, err
+func (smis *SMIS) PostDeleteMaskingView(systemInstance *gowbem.InstanceName, maskingView *gowbem.InstancePath) error {
+	controller, err := smis.GetControllerConfigurationService(systemInstance)
+	if err != nil {
+		return err
+	}
+
+	var params []gowbem.IParamValue
+	params = append(params, gowbem.IParamValue{Name: "ProtocolController", ValueReference: &gowbem.ValueReference{InstancePath: maskingView}})
+
+	retValue, retParms, err := smis.InvokeMethod(controller, "DeleteMaskingView", params)
+	if err != nil {
+		return err
+	}
+	if retValue != 0 {
+		_, err = smis.WaitForJob(retParms[0].ValueReference.InstancePath, "Symm_LunMaskingView")
+	}
+	return err
+
 }
 
 /////////////////////////////////////////////////////////
