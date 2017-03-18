@@ -17,7 +17,7 @@ var testingSID string
 var testingInstance *gowbem.InstanceName
 
 func init() {
-	host := MyGetenv("GOVMAX_SMISHOST", "10.108.247.22")
+	host := MyGetenv("GOVMAX_SMISHOST", "")
 	port := MyGetenv("GOVMAX_SMISPORT", "5988")
 	insecure, _ := strconv.ParseBool(MyGetenv("GOVMAX_INSECURE", "true"))
 	username := MyGetenv("GOVMAX_USERNAME", "admin")
@@ -116,71 +116,91 @@ func DumpParmValues(values []gowbem.ParamValue) {
 	}
 }
 
-func TestGetStorageArrays(*testing.T) {
+func TestGetStorageArrays(t *testing.T) {
 
 	arrays, err := smis.GetStorageArrays()
 	//Setup array name for rest of tests
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 
 	testingSID = ""
 	fmt.Println(testingSID)
 	for _, array := range arrays {
-		DumpInstanceName(&array)
+		DumpInstanceClass(&array)
 		swIdent, err2 := smis.GetSoftwareIdentity(&array)
 		if err2 != nil {
-			panic(err2)
+			t.Log(err2.Error())
+			t.Fail()
+			return
 		}
 		DumpInstance(swIdent)
 	}
 }
 
-func TestGetStoragePools(*testing.T) {
+func TestGetStoragePools(t *testing.T) {
 	pools, err := smis.GetStoragePools(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	if len(pools) == 0 {
-		panic("empty list")
+		t.Log("empty list")
+		t.Fail()
+		return
 	}
 	for _, entry := range pools {
 		if entry.InstancePath == nil {
-			panic("nil InstancePath")
+			t.Log("nil InstancePath")
+			t.Fail()
+			return
 		}
 		poolSettings, err := smis.GetStoragePoolSettings(entry.InstancePath.InstanceName)
 		if err != nil {
-			panic(err)
+			t.Log(err.Error())
+			t.Fail()
+			return
 		}
 		for _, obj := range poolSettings {
-			DumpInstanceName(obj.InstancePath.InstanceName)
+			DumpInstanceClass(obj.InstancePath.InstanceName)
 		}
 	}
 }
 
-func TestGetMaskingViews(*testing.T) {
+func TestGetMaskingViews(t *testing.T) {
 	maskingViews, err := smis.GetMaskingViews(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	if len(maskingViews) == 0 {
-		panic("empty list")
+		t.Log("empty list")
+		t.Fail()
+		return
 	}
 
 	for _, entry := range maskingViews {
 		devId, _ := GetKeyFromInstanceName(entry.InstancePath.InstanceName, "DeviceID")
-		fmt.Println(fmt.Sprintf("%+v", devId))
+		fmt.Println(devId.(string))
 	}
 }
 
-func TestGetStorageGroups(*testing.T) {
+func TestGetStorageGroups(t *testing.T) {
 
 	groups, err := smis.GetStorageGroups(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	if len(groups) == 0 {
-		panic("empty list")
+		t.Log("empty list")
+		t.Fail()
+		return
 	}
 
 	for _, entry := range groups {
@@ -188,16 +208,20 @@ func TestGetStorageGroups(*testing.T) {
 	}
 }
 
-func TestGetVolumes(*testing.T) {
+func TestGetVolumes(t *testing.T) {
 
 	inst, e := smis.GetStorageInstanceName(testingSID)
 	if e != nil {
-		panic(e)
+		t.Log(e.Error())
+		t.Fail()
+		return
 	}
 
 	vols, err := smis.GetVolumes(inst)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 
 	for _, entry := range vols {
@@ -205,14 +229,18 @@ func TestGetVolumes(*testing.T) {
 	}
 }
 
-func TestPortGroups(*testing.T) {
+func TestPortGroups(t *testing.T) {
 
 	portGroups, err := smis.GetPortGroups(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	if len(portGroups) == 0 {
-		panic("empty list")
+		t.Log("empty list")
+		t.Fail()
+		return
 	}
 
 	for _, entry := range portGroups {
@@ -220,14 +248,18 @@ func TestPortGroups(*testing.T) {
 	}
 }
 
-func TestInitiatorGroups(*testing.T) {
+func TestInitiatorGroups(t *testing.T) {
 
 	initGroups, err := smis.GetHostGroups(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	if len(initGroups) == 0 {
-		panic("empty list")
+		t.Log("empty list")
+		t.Fail()
+		return
 	}
 
 	for _, entry := range initGroups {
@@ -235,14 +267,18 @@ func TestInitiatorGroups(*testing.T) {
 	}
 }
 
-func TestGetInitiators(*testing.T) {
+func TestGetInitiators(t *testing.T) {
 
 	initiators, err := smis.GetScsiInitiators(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	if len(initiators) == 0 {
-		panic("empty list")
+		t.Log("empty list")
+		t.Fail()
+		return
 	}
 
 	for _, entry := range initiators {
@@ -251,67 +287,81 @@ func TestGetInitiators(*testing.T) {
 	}
 }
 
-func TestGetVolumeByID(*testing.T) {
+func TestGetVolumeByID(t *testing.T) {
 
 	var volumeId interface{}
 
 	vols, err := smis.GetVolumes(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	idx := len(vols) / 2
 	volumeId, err = GetKeyFromInstanceName(vols[idx].InstancePath.InstanceName, "DeviceID")
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
-	fmt.Println("Looking for volume = ", volumeId.(string))
+	fmt.Println("Looking for volume = %s", volumeId.(string))
 
 	vol, err := smis.GetVolumeByID(testingInstance, volumeId.(string))
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 
 	DumpInstanceClass(vol)
 }
 
-func TestGetVolumeByName(*testing.T) {
+func TestGetVolumeByName(t *testing.T) {
 
 	var volumeInstance *gowbem.Instance
 
 	vols, err := smis.GetVolumes(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	volumeInstance, err = smis.GetInstance(vols[0].InstancePath.InstanceName, false, nil)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	nameProp, _ := GetPropertyByName(volumeInstance, "ElementName")
 	fmt.Println("Looking for volume = ", nameProp.(string))
 
 	foundVols, err := smis.GetVolumeByName(testingInstance, nameProp.(string))
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	for _, v := range foundVols {
-		DumpInstanceName(v)
+		DumpInstanceClass(v)
 	}
 }
 
-func TestGetSLOs(*testing.T) {
+func TestGetSLOs(t *testing.T) {
 	if smis.IsArrayV3(testingInstance) {
 		SLOs, err := smis.GetSLOs(testingInstance)
 		if err != nil {
-			panic(err)
+			t.Log(err.Error())
+			t.Fail()
+			return
 		}
 
 		for _, entry := range SLOs {
-			fmt.Printf("%+v\n", entry)
+			t.Logf("%+v\n", entry)
 		}
 	}
 }
 
-func TestPostVolumes(*testing.T) {
+func TestPostVolumes(t *testing.T) {
 
 	PostVolRequest := &PostVolumesReq{
 		ElementName:        "govmax_test_vol",
@@ -325,63 +375,80 @@ func TestPostVolumes(*testing.T) {
 
 	volumes, err := smis.PostVolumes(PostVolRequest, testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 
 	var volPaths []gowbem.InstancePath
 	for _, p := range volumes {
-		DumpInstanceName(p.InstancePath.InstanceName)
+		DumpInstanceClass(p.InstancePath.InstanceName)
 		volPaths = append(volPaths, *p.InstancePath)
 	}
 
 	err = smis.PostDeleteVol(testingInstance, volPaths)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 }
 
-func TestGetStoragePoolSettings(*testing.T) {
+func TestGetStoragePoolSettings(t *testing.T) {
 	storagePools, err := smis.GetStoragePools(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	if len(storagePools) == 0 {
-		panic("No pools found")
+		t.Log("No pools found")
+		t.Fail()
+		return
 	}
 
 	storagePoolSettings, err := smis.GetStoragePoolSettings(storagePools[0].InstancePath.InstanceName)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	for _, sp := range storagePoolSettings {
-		DumpInstanceName(sp.InstancePath.InstanceName)
+		DumpInstanceClass(sp.InstancePath.InstanceName)
 	}
 }
 
-func TestPostCreateGroup(*testing.T) {
+func TestPostCreateGroup(t *testing.T) {
 	curTime := time.Now()
 	groupName := "govmax_sg_" + strconv.FormatInt(curTime.Unix(), 16)
-	fmt.Println("group = ", groupName)
+	fmt.Println("creating group = ", groupName)
 
 	storageGroup, err := smis.PostCreateGroup(testingInstance, groupName, 4)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
-	DumpInstanceName(storageGroup.InstanceName)
+	DumpInstanceClass(storageGroup.InstanceName)
 
 	err = smis.PostDeleteGroup(testingInstance, storageGroup, false)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
 	}
 }
 
-func TestAddRemoveFromGroup(*testing.T) {
+func TestAddRemoveFromGroup(t *testing.T) {
 	ports, err := smis.GetTargetEndpoints(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	if len(ports) < 2 {
-		panic("not enough ports available")
+		t.Log("not enough ports available")
+		t.Fail()
+		return
 	}
 
 	var members []gowbem.InstancePath
@@ -390,61 +457,78 @@ func TestAddRemoveFromGroup(*testing.T) {
 
 	portGroup, err := smis.PostCreateGroup(testingInstance, "govmax_test_pg", 3)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
-	DumpInstanceName(portGroup.InstanceName)
+	DumpInstanceClass(portGroup.InstanceName)
 
 	err = smis.AddMembersToGroup(testingInstance, portGroup, members)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	fmt.Println("Added = ", members)
 
 	err = smis.RemoveMembersFromGroup(testingInstance, portGroup, members)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 	fmt.Println("Removed = ", members)
 
 	err = smis.PostDeleteGroup(testingInstance, portGroup, false)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
 	}
 }
 
-func TestPostStorageHardwareID(*testing.T) {
+func TestPostStorageHardwareID(t *testing.T) {
 	newInit, err := smis.PostStorageHardwareID(testingInstance, "10000000C94E5D22", 2)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
-	DumpInstanceName(newInit.InstanceName)
+	DumpInstanceClass(newInit.InstanceName)
 
 	err = smis.DeleteStorageHardwareID(testingInstance, newInit)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 }
 
-func TestGetBaremetalHBA(*testing.T) {
+func TestGetBaremetalHBA(t *testing.T) {
 
 	HBAs, err := GetBaremetalHBA()
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+	} else {
+		fmt.Println("%+v", HBAs)
 	}
-	fmt.Printf("%+v", HBAs)
 }
 
-func TestPostPortLogins(*testing.T) {
+func TestPostPortLogins(t *testing.T) {
 
 	endpoints, err := smis.GetScsiInitiators(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 
 	for _, ep := range endpoints {
 		portValues, err := smis.PostPortLogins(testingInstance, ep.InstancePath)
 		if err != nil {
-			panic(err)
+			t.Log(err.Error())
+			t.Fail()
+			return
 		}
 		for i := 0; i < len(portValues); i++ {
 			fmt.Println("Port Number:" + portValues[i].PortNumber + " Director:" + portValues[i].Director + " WWN:" + portValues[i].WWN)
@@ -457,7 +541,9 @@ func TestPostDeleteMV(t *testing.T) {
 
 	mvs, err := smis.GetMaskingViews(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 
 	var found bool = false
@@ -474,7 +560,8 @@ func TestPostDeleteMV(t *testing.T) {
 			break
 		}
 	}
-	if found {
+	if !found {
+		t.Log(mvName + ": not found")
 		t.Fail()
 	}
 }
@@ -487,17 +574,23 @@ func TestPostCreateMaskingView(t *testing.T) {
 
 	sgs, err := smis.GetStorageGroups(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 
 	igs, err := smis.GetHostGroups(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 
 	pgs, err := smis.GetPortGroups(testingInstance)
 	if err != nil {
-		panic(err)
+		t.Log(err.Error())
+		t.Fail()
+		return
 	}
 
 	var viewSg *gowbem.InstancePath
