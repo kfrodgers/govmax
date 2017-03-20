@@ -15,8 +15,26 @@ import (
 //            GET a list of Storage Arrays                   //
 ///////////////////////////////////////////////////////////////
 
-func (smis *SMIS) GetStorageArrays() ([]gowbem.InstanceName, error) {
-	return smis.EnumerateInstanceNames("Symm_StorageSystem")
+func (smis *SMIS) GetStorageArrays() ([]string, error) {
+	arrays, err := smis.EnumerateInstanceNames("Symm_StorageSystem")
+	if err != nil {
+		return nil, err
+	}
+
+	var sidArray []string
+	for _, array := range arrays {
+		instance, err := smis.GetInstance(&array, false, nil)
+		if err != nil {
+			continue
+		}
+		elemName, err := GetPropertyByName(instance, "ElementName")
+		if err != nil {
+			continue
+		}
+
+		sidArray = append(sidArray, elemName.(string))
+	}
+	return sidArray, nil
 }
 
 ///////////////////////////////////////////////////////////////
@@ -24,17 +42,17 @@ func (smis *SMIS) GetStorageArrays() ([]gowbem.InstanceName, error) {
 ///////////////////////////////////////////////////////////////
 
 func (smis *SMIS) GetStorageInstanceName(sid string) (*gowbem.InstanceName, error) {
-	arrays, err := smis.GetStorageArrays()
+	arrays, err := smis.EnumerateInstances("Symm_StorageSystem", true, true, nil)
 	if err != nil {
 		return nil, err
 	}
 	for _, array := range arrays {
-		name, err := GetKeyFromInstanceName(&array, "Name")
+		name, err := GetPropertyByName(array.Instance, "ElementName")
 		if err != nil {
 			continue
 		}
-		if strings.HasSuffix(name.(string), sid) {
-			return &array, nil
+		if name.(string) == sid {
+			return array.InstanceName, nil
 		}
 	}
 	return nil, errors.New("Array not found")

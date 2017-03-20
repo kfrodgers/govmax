@@ -33,14 +33,10 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	for _, array := range arrays {
-		instance, e := smis.GetInstance(&array, false, nil)
-		if nil != e {
-			continue
-		}
-		pr, _ := GetPropertyByName(instance, "ElementName")
-		testingSID = pr.(string)
-		testingInstance = &array
+	testingSID = arrays[0]
+	testingInstance, err = smis.GetStorageInstanceName(testingSID)
+	if err != nil {
+		panic(err)
 	}
 }
 
@@ -126,15 +122,20 @@ func TestGetStorageArrays(t *testing.T) {
 		return
 	}
 
-	testingSID = ""
-	fmt.Println(testingSID)
 	for _, array := range arrays {
-		DumpInstanceClass(&array)
-		swIdent, err2 := smis.GetSoftwareIdentity(&array)
-		if err2 != nil {
-			t.Log(err2.Error())
+		arrayInstance, err := smis.GetStorageInstanceName(array)
+		if err != nil {
+			t.Log(err.Error())
 			t.Fail()
-			return
+			continue
+		}
+
+		DumpInstanceClass(arrayInstance)
+		swIdent, err := smis.GetSoftwareIdentity(arrayInstance)
+		if err != nil {
+			t.Log(err.Error())
+			t.Fail()
+			continue
 		}
 		DumpInstance(swIdent)
 	}

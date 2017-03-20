@@ -23,14 +23,24 @@ Intialize a new client
 
 ### Some Volume Examples
 
+Get Storage Arrays
+
+    arraySIDs, err := smis.GetStorageArrays()
+	...
+	mySID = arraySIDs[index]
+
+Get Storage Instance Name
+
+    myArrayName, err := smis.GetStorageInstanceName(mySID)
+
 Get Storage Pools
 
-    pools, err := smis.GetStoragePools(testingSID)
+    pools, err := smis.GetStoragePools(myArrayName)
 
 
 Get Volumes
 
-    vols, err := smis.GetVolumes(testingSID)
+    vols, err := smis.GetVolumes(myArrayName)
 
 
 
