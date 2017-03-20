@@ -19,6 +19,10 @@ func (smis *SMIS) GetStorageArrays() ([]gowbem.InstanceName, error) {
 	return smis.EnumerateInstanceNames("Symm_StorageSystem")
 }
 
+///////////////////////////////////////////////////////////////
+//            GET a list of Storage Instances                //
+///////////////////////////////////////////////////////////////
+
 func (smis *SMIS) GetStorageInstanceName(sid string) (*gowbem.InstanceName, error) {
 	arrays, err := smis.GetStorageArrays()
 	if err != nil {
@@ -36,70 +40,69 @@ func (smis *SMIS) GetStorageInstanceName(sid string) (*gowbem.InstanceName, erro
 	return nil, errors.New("Array not found")
 }
 
+///////////////////////////////////////////////////////////////
+//            GET Storage Configuration Service              //
+///////////////////////////////////////////////////////////////
+
 func (smis *SMIS) GetStorageConfigurationService(systemInstanceName *gowbem.InstanceName) (*gowbem.InstanceName, error) {
-	configServices, err := smis.EnumerateInstanceNames("EMC_StorageConfigurationService")
+	configServices, err := smis.AssociatorNames(systemInstanceName, "", "EMC_StorageConfigurationService", nil, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	sysName, _ := GetKeyFromInstanceName(systemInstanceName, "Name")
-	for _, service := range configServices {
-		name, _ := GetKeyFromInstanceName(&service, "SystemName")
-		if name.(string) == sysName.(string) {
-			return &service, nil
-
-		}
+	if len(configServices) < 1 {
+		return nil, errors.New("EMC_StorageConfigurationService: not found")
 	}
-	return nil, errors.New("Service not found")
+	return configServices[0].InstancePath.InstanceName, nil
 }
+
+///////////////////////////////////////////////////////////////
+//            GET Controller Configuration Service           //
+///////////////////////////////////////////////////////////////
 
 func (smis *SMIS) GetControllerConfigurationService(systemInstanceName *gowbem.InstanceName) (*gowbem.InstanceName, error) {
-	controllerServices, err := smis.EnumerateInstanceNames("EMC_ControllerConfigurationService")
+	controllerServices, err := smis.AssociatorNames(systemInstanceName, "", "EMC_ControllerConfigurationService", nil, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	sysName, _ := GetKeyFromInstanceName(systemInstanceName, "Name")
-	for _, service := range controllerServices {
-		name, _ := GetKeyFromInstanceName(&service, "SystemName")
-		if name.(string) == sysName.(string) {
-			return &service, nil
-		}
+	if len(controllerServices) < 1 {
+		return nil, errors.New("EMC_ControllerConfigurationService: not found")
 	}
-	return nil, errors.New("Service not found")
+	return controllerServices[0].InstancePath.InstanceName, nil
 }
+
+///////////////////////////////////////////////////////////////
+//            GET Storage Hardware ID Management Service     //
+///////////////////////////////////////////////////////////////
 
 func (smis *SMIS) GetStorageHardwareIDManagementService(systemInstanceName *gowbem.InstanceName) (*gowbem.InstanceName, error) {
-	managementServices, err := smis.EnumerateInstanceNames("Symm_StorageHardwareIDManagementService")
+	managementServices, err := smis.AssociatorNames(systemInstanceName, "", "Symm_StorageHardwareIDManagementService", nil, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	sysName, _ := GetKeyFromInstanceName(systemInstanceName, "Name")
-	for _, service := range managementServices {
-		name, _ := GetKeyFromInstanceName(&service, "SystemName")
-		if name.(string) == sysName.(string) {
-			return &service, nil
-		}
+	if len(managementServices) < 1 {
+		return nil, errors.New("Symm_StorageHardwareIDManagementService: not found")
 	}
-	return nil, errors.New("Service not found")
+	return managementServices[0].InstancePath.InstanceName, nil
 }
+
+///////////////////////////////////////////////////////////////
+//            GET Software Identity                          //
+///////////////////////////////////////////////////////////////
 
 func (smis *SMIS) GetSoftwareIdentity(systemInstanceName *gowbem.InstanceName) (*gowbem.Instance, error) {
-	softwareIdents, err := smis.EnumerateInstanceNames("Symm_StorageSystemSoftwareIdentity")
+	softwareIdents, err := smis.AssociatorInstances(systemInstanceName, "", "Symm_StorageSystemSoftwareIdentity", nil, nil, true, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	sysName, _ := GetKeyFromInstanceName(systemInstanceName, "Name")
-	for _, swIdent := range softwareIdents {
-		name, _ := GetKeyFromInstanceName(&swIdent, "InstanceID")
-		if name.(string) == sysName.(string) {
-			return smis.GetInstance(&swIdent, false, nil)
-		}
+	if len(softwareIdents) < 1 {
+		return nil, errors.New("Symm_StorageSystemSoftwareIdentity: not found")
 	}
-	return nil, errors.New("Service not found")
+	return softwareIdents[0].Instance, nil
 }
+
+///////////////////////////////////////////////////////////////
+//            Is Array V3 or Greater                         //
+///////////////////////////////////////////////////////////////
 
 func (smis *SMIS) IsArrayV3(systemInstanceName *gowbem.InstanceName) bool {
 	swIdent, err := smis.GetSoftwareIdentity(systemInstanceName)
@@ -215,7 +218,7 @@ func (smis *SMIS) GetStorageProcessorSystem(systemInstance *gowbem.InstanceName)
 func (smis *SMIS) GetScsiInitiators(systemInstance *gowbem.InstanceName) ([]gowbem.ObjectPath, error) {
 	service, err := smis.GetStorageHardwareIDManagementService(systemInstance)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	return smis.AssociatorNames(service, "", "SE_StorageHardwareID", nil, nil)
 }
@@ -231,6 +234,7 @@ func (smis *SMIS) GetScsiEndpoints(storageProcessor *gowbem.InstanceName) ([]gow
 ///////////////////////////////////////////////////////////////
 //            GET a list of Front End Ports                  //
 ///////////////////////////////////////////////////////////////
+
 func (smis *SMIS) GetTargetEndpoints(systemInstance *gowbem.InstanceName) ([]gowbem.ObjectPath, error) {
 	storageProcs, err := smis.GetStorageProcessorSystem(systemInstance)
 	if err != nil {
@@ -333,7 +337,11 @@ func (smis *SMIS) GetJobStatus(jobPath *gowbem.InstancePath) (*gowbem.Instance, 
 	return resp, jobStatus, err
 }
 
-func (smis *SMIS) FindJobIndex(returnParams []gowbem.ParamValue) (int, error) {
+///////////////////////////////////////////////////////////////
+//         GET a list of Host (Initiator) Groups             //
+///////////////////////////////////////////////////////////////
+
+func FindJobIndex(returnParams []gowbem.ParamValue) (int, error) {
 	for i, param := range returnParams {
 		if param.ValueReference != nil &&
 			param.ValueReference.InstancePath.InstanceName.ClassName == "SE_ConcreteJob" {
@@ -400,7 +408,7 @@ func (smis *SMIS) PostVolumes(req *PostVolumesReq, systemInstance *gowbem.Instan
 		return nil, jobErr
 	}
 
-	idx, _ := smis.FindJobIndex(retValues)
+	idx, _ := FindJobIndex(retValues)
 	if idx == -1 {
 		return nil, errors.New("Job instance not found")
 	}
@@ -438,6 +446,7 @@ func (smis *SMIS) PostCreateGroup(systemInstance *gowbem.InstanceName, groupName
 ///////////////////////////////////////////////////////////////////
 //                GET Storage Pool Capabilities                  //
 ///////////////////////////////////////////////////////////////////
+
 func (smis *SMIS) GetStoragePoolCapabilities(srp_name *gowbem.InstanceName) (*gowbem.InstanceName, error) {
 	capabilities, err := smis.EnumerateInstanceNames("Symm_StoragePoolCapabilities")
 
@@ -461,6 +470,7 @@ func (smis *SMIS) GetStoragePoolCapabilities(srp_name *gowbem.InstanceName) (*go
 ///////////////////////////////////////////////////////////////
 //                GET Storage Pool Settings                  //
 ///////////////////////////////////////////////////////////////
+
 func (smis *SMIS) GetStoragePoolSettings(srp_name *gowbem.InstanceName) ([]gowbem.ObjectPath, error) {
 	capabilities, err := smis.GetStoragePoolCapabilities(srp_name)
 	if err != nil {
@@ -591,6 +601,7 @@ func (smis *SMIS) RemoveMembersFromGroup(systemInstance *gowbem.InstanceName, gr
 //     idType == 2 for WWN                                   //
 //     idType == 5 for IQN                                   //
 ///////////////////////////////////////////////////////////////
+
 func (smis *SMIS) PostStorageHardwareID(systemInstance *gowbem.InstanceName, storageID string, idType int) (*gowbem.InstancePath, error) {
 	management, err := smis.GetStorageHardwareIDManagementService(systemInstance)
 	if err != nil {
@@ -614,6 +625,10 @@ func (smis *SMIS) PostStorageHardwareID(systemInstance *gowbem.InstanceName, sto
 	}
 	return retParms[0].ValueReference.InstancePath, nil
 }
+
+///////////////////////////////////////////////////////////////
+//         Delete Initiator/Storage Hardware ID              //
+///////////////////////////////////////////////////////////////
 
 func (smis *SMIS) DeleteStorageHardwareID(systemInstance *gowbem.InstanceName, hardwardId *gowbem.InstancePath) error {
 	management, err := smis.GetStorageHardwareIDManagementService(systemInstance)
@@ -655,7 +670,7 @@ func (smis *SMIS) PostCreateMaskingView(systemInstance *gowbem.InstanceName, mvN
 		return nil, err
 	}
 
-	idx, _ := smis.FindJobIndex(retValues)
+	idx, _ := FindJobIndex(retValues)
 	if idx == -1 {
 		return nil, errors.New("Job instance not found")
 	}
@@ -785,6 +800,7 @@ type PortValues struct {
 ///////////////////////////////////////////////////////////////
 //           Getting Ports Logged In                         //
 ///////////////////////////////////////////////////////////////
+
 func (smis *SMIS) PostPortLogins(systemInstance *gowbem.InstanceName, initiator *gowbem.InstancePath) ([]PortValues, error) {
 
 	service, err := smis.GetStorageHardwareIDManagementService(systemInstance)
