@@ -16,29 +16,24 @@ import (
 ///////////////////////////////////////////////////////////////
 
 func (smis *SMIS) GetStorageArrays() ([]string, error) {
-	arrays, err := smis.EnumerateInstanceNames("Symm_StorageSystem")
+	arrays, err := smis.EnumerateInstances("Symm_StorageSystem", true, true, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var sidArray []string
 	for _, array := range arrays {
-		instance, err := smis.GetInstance(&array, false, nil)
+		sid, err := GetPropertyByName(array.Instance, "ElementName")
 		if err != nil {
 			continue
 		}
-		elemName, err := GetPropertyByName(instance, "ElementName")
-		if err != nil {
-			continue
-		}
-
-		sidArray = append(sidArray, elemName.(string))
+		sidArray = append(sidArray, sid.(string))
 	}
 	return sidArray, nil
 }
 
 ///////////////////////////////////////////////////////////////
-//            GET a list of Storage Instances                //
+//            GET Storage Instance Name                      //
 ///////////////////////////////////////////////////////////////
 
 func (smis *SMIS) GetStorageInstanceName(sid string) (*gowbem.InstanceName, error) {
